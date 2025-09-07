@@ -1,0 +1,7 @@
+.env
+session/
+downloads/
+*.mp3
+*.mp4
+session-bundle.json
+node_modules/
