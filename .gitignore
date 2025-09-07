@@ -4,7 +4,4 @@ downloads/
 *.mp3
 *.mp4
 session-bundle.json
-git rm --cached -r downloads
-git add .
-git commit -m "Ignorar descargas, sesiones y secretos"
-git push origin master --force
+node_modules/
