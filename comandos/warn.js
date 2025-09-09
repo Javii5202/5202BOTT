@@ -1,28 +1,32 @@
-// comandos/warn.js
-import fs from 'fs';
-import path from 'path';
+const fs = require('fs');
+const path = './assets/warns.json';
 
-const warnsPath = path.join('./assets/warns.json');
+module.exports = {
+  name: 'warn',
+  description: 'Da una advertencia a un usuario',
+  async execute(client, message, args) {
+    try {
+      const mentioned = message.mentionedJid || args[0]; // si es una mención real, toma el JID
+      if (!mentioned) return client.sendMessage(message.from, '❌ Debes mencionar a alguien');
 
-export default async function warn(sock, from, m, args) {
-  const chat = await sock.groupMetadata(from).catch(() => null);
-  if (!chat) return sock.sendMessage(from, { text: "⚠️ Este comando solo funciona en grupos." });
+      // Leer archivo de warns
+      let warns = {};
+      if (fs.existsSync(path)) {
+        warns = JSON.parse(fs.readFileSync(path, 'utf8'));
+      }
 
-  const sender = m.key.participant || m.key.remoteJid;
-  const isAdmin = chat.participants.some(p => p.id === sender && (p.admin === "admin" || p.admin === "superadmin"));
-  if (!isAdmin) return sock.sendMessage(from, { text: "❌ Solo admins pueden usar este comando." });
+      // Inicializar si no existe
+      if (!warns[mentioned]) warns[mentioned] = 0;
 
-  const mentioned = m.message?.extendedTextMessage?.contextInfo?.mentionedJid || args[0];
-  if (!mentioned) return sock.sendMessage(from, { text: "⚠️ Menciona a alguien para advertir." });
+      // Sumar warn
+      warns[mentioned] += 1;
 
-  // Leer warns desde archivo
-  let warnsDB = {};
-  if (fs.existsSync(warnsPath)) warnsDB = JSON.parse(fs.readFileSync(warnsPath, 'utf-8'));
+      // Guardar archivo
+      fs.writeFileSync(path, JSON.stringify(warns, null, 2));
 
-  if (!warnsDB[mentioned]) warnsDB[mentioned] = 0;
-  warnsDB[mentioned] += 1;
-
-  fs.writeFileSync(warnsPath, JSON.stringify(warnsDB, null, 2));
-
-  sock.sendMessage(from, { text: `⚠️ Usuario <@${mentioned.split("@")[0]}> recibió un warn.\nTotal: ${warnsDB[mentioned]}`, mentions: [mentioned] });
-}
+      client.sendMessage(message.from, `⚠️ ${mentioned} ahora tiene ${warns[mentioned]} advertencia(s)`);
+    } catch (err) {
+      console.error('Error en warn:', err);
+    }
+  }
+};
