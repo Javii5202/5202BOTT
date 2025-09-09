@@ -1,9 +1,12 @@
 import fs from "fs";
 import path from "path";
+import ytdl from "ytdl-core";
+import ffmpeg from "fluent-ffmpeg";
+import ffmpegPath from "ffmpeg-static";
 import axios from "axios";
-import ytdlp from "yt-dlp-exec";
 
-// Carpeta donde se guardarán los mp3 temporales
+ffmpeg.setFfmpegPath(ffmpegPath);
+
 const downloadsDir = path.join(process.cwd(), "downloads");
 if (!fs.existsSync(downloadsDir)) fs.mkdirSync(downloadsDir);
 
@@ -14,21 +17,23 @@ export default async function play(sock, from, m, args) {
   }
 
   try {
-    // Buscar la canción en YouTube
-    let infoRaw = await ytdlp(`ytsearch1:${query}`, { dumpSingleJson: true, skipDownload: true });
-    let info = typeof infoRaw === "string" ? JSON.parse(infoRaw) : infoRaw;
-    if (info.entries?.length) info = info.entries[0];
+    // Buscar en YouTube usando yts
+    const yts = (await import('yt-search')).default;
+    const searchResult = await yts(query);
+    if (!searchResult || !searchResult.videos.length) 
+      return await sock.sendMessage(from, { text: "❌ No se encontró la canción." });
 
-    const title = info.title || "Sin título";
-    const videoUrl = info.webpage_url;
+    const video = searchResult.videos[0];
+    const title = video.title;
+    const videoUrl = video.url;
 
     // Nombre seguro para el archivo
     const safeBase = title.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 120) + "_" + Date.now();
-    const outTemplate = path.join(downloadsDir, `${safeBase}.%(ext)s`);
+    const outputPath = path.join(downloadsDir, `${safeBase}.mp3`);
 
     // Enviar miniatura mientras se descarga
     try {
-      const resp = await axios.get(info.thumbnail, { responseType: "arraybuffer" });
+      const resp = await axios.get(video.thumbnail, { responseType: "arraybuffer" });
       await sock.sendMessage(from, {
         image: Buffer.from(resp.data),
         caption: `🎵 ${title}\n🔗 ${videoUrl}`
@@ -37,31 +42,25 @@ export default async function play(sock, from, m, args) {
       await sock.sendMessage(from, { text: `🎵 Buscando "${query}" en YouTube...` });
     }
 
-    // Descargar audio en mp3
-    await ytdlp(videoUrl, {
-      output: outTemplate,
-      extractAudio: true,
-      audioFormat: "mp3",
-      noCallHome: true
+    // Descargar y convertir a mp3
+    await new Promise((resolve, reject) => {
+      ffmpeg(ytdl(videoUrl, { filter: "audioonly" }))
+        .audioBitrate(128)
+        .save(outputPath)
+        .on("end", resolve)
+        .on("error", reject);
     });
 
-    // Encontrar archivo descargado
-    const files = fs.readdirSync(downloadsDir);
-    const match = files.find(f => f.startsWith(safeBase));
-    if (!match) return await sock.sendMessage(from, { text: "❌ No se encontró el audio descargado." });
-
-    const downloadedFile = path.join(downloadsDir, match);
-    const buffer = fs.readFileSync(downloadedFile);
-
-    // Enviar audio
+    // Leer archivo y enviar
+    const buffer = fs.readFileSync(outputPath);
     await sock.sendMessage(from, {
       audio: buffer,
       mimetype: "audio/mpeg",
-      fileName: path.basename(downloadedFile)
+      fileName: path.basename(outputPath)
     });
 
     // Eliminar archivo temporal
-    fs.unlinkSync(downloadedFile);
+    fs.unlinkSync(outputPath);
 
   } catch (err) {
     console.error("Error en .play:", err);
