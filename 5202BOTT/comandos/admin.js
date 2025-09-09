@@ -1,123 +1,74 @@
-const fs = require("fs");
-const path = require("path");
-const { jidNormalizedUser } = require("@whiskeysockets/baileys");
+import fs from "fs";
 
-const warnsPath = path.join(__dirname, "../assets/warns.json");
+const warnsFile = "warns.json";
 
-// Función para leer warns.json
-function readWarns() {
-    if (!fs.existsSync(warnsPath)) return {};
-    const data = fs.readFileSync(warnsPath, "utf-8");
-    try {
-        return JSON.parse(data);
-    } catch {
-        return {};
-    }
+function loadWarns() {
+  if (!fs.existsSync(warnsFile)) return {};
+  return JSON.parse(fs.readFileSync(warnsFile, "utf8"));
 }
 
-// Función para guardar warns.json
 function saveWarns(data) {
-    fs.writeFileSync(warnsPath, JSON.stringify(data, null, 2));
+  fs.writeFileSync(warnsFile, JSON.stringify(data, null, 2));
 }
 
-module.exports = async function adminCmds(sock, from, message, args) {
-    try {
-        const chat = await sock.groupMetadata(from).catch(() => null);
-        if (!chat) {
-            await sock.sendMessage(from, { text: "Este comando solo funciona en grupos." });
-            return;
-        }
+export default async function admin(sock, from, m, args) {
+  const chat = await sock.groupMetadata(from).catch(() => null);
+  if (!chat) return await sock.sendMessage(from, { text: "Este comando solo funciona en grupos." });
 
-        const sender = jidNormalizedUser(message?.key?.participant || message?.key?.remoteJid);
-        const isAdmin = chat.participants.some(p => p.id === sender && (p.admin === "admin" || p.admin === "superadmin"));
-        if (!isAdmin) {
-            await sock.sendMessage(from, { text: "❌ Solo los administradores pueden usar este comando." });
-            return;
-        }
+  const sender = m.key.participant || m.key.remoteJid;
+  const isAdmin = chat.participants.some(p => p.id === sender && (p.admin === "admin" || p.admin === "superadmin"));
+  if (!isAdmin) return await sock.sendMessage(from, { text: "❌ Solo administradores pueden usar este comando." });
 
-        const command = args[0]?.toLowerCase();
-        if (!command) return;
+  const subcmd = args[0];
+  const mentioned = m.message.extendedTextMessage?.contextInfo?.mentionedJid || [];
+  const target = mentioned[0] || sender;
 
-        const warns = readWarns();
-        if (!warns[from]) warns[from] = {};
+  const warns = loadWarns();
 
-        // Obtener usuario objetivo
-        let user;
-        // Primero revisa si hay mención real
-        if (message.extendedTextMessage?.contextInfo?.mentionedJid?.length) {
-            user = message.extendedTextMessage.contextInfo.mentionedJid[0];
-        } else if (args[1]) {
-            // Normaliza número a WhatsApp JID
-            let num = args[1].replace(/\D/g, ""); // elimina todo excepto números
-            user = num + "@s.whatsapp.net";
-        }
-
-        if ((command === "warn" || command === "unwarn") && !user) {
-            await sock.sendMessage(from, { text: "❌ Menciona a alguien o escribe su número para ejecutar este comando." });
-            return;
-        }
-
-        switch (command) {
-            case "warn": {
-                if (!warns[from][user]) warns[from][user] = 0;
-                warns[from][user]++;
-                saveWarns(warns);
-
-                const warnCount = warns[from][user];
-                await sock.sendMessage(from, {
-                    text: `⚠️ @${user.split("@")[0]} ahora tiene ${warnCount}/3 advertencias.`,
-                    mentions: [user]
-                });
-
-                // Auto-expulsar si llega a 3
-                if (warnCount >= 3) {
-                    await sock.groupParticipantsUpdate(from, [user], "remove");
-                    await sock.sendMessage(from, {
-                        text: `❌ @${user.split("@")[0]} fue expulsado automáticamente por 3 advertencias.`,
-                        mentions: [user]
-                    });
-                    warns[from][user] = 0; // reset warns después de expulsar
-                    saveWarns(warns);
-                }
-                break;
-            }
-            case "unwarn": {
-                if (!warns[from][user]) warns[from][user] = 0;
-                warns[from][user] = Math.max(0, warns[from][user] - 1);
-                saveWarns(warns);
-
-                await sock.sendMessage(from, {
-                    text: `✅ @${user.split("@")[0]} ahora tiene ${warns[from][user]}/3 advertencias.`,
-                    mentions: [user]
-                });
-                break;
-            }
-            case "listadv": {
-                let list = "🕷 Lista de advertencias:\n\n";
-                for (const [uid, count] of Object.entries(warns[from])) {
-                    list += `⚠️ @${uid.split("@")[0]} → ${count}/3\n`;
-                }
-                await sock.sendMessage(from, { text: list, mentions: Object.keys(warns[from]) });
-                break;
-            }
-            case "k": {
-                if (!user) {
-                    await sock.sendMessage(from, { text: "❌ Menciona a alguien o escribe su número para expulsarlo." });
-                    return;
-                }
-                await sock.groupParticipantsUpdate(from, [user], "remove");
-                await sock.sendMessage(from, {
-                    text: `❌ @${user.split("@")[0]} fue expulsado.`,
-                    mentions: [user]
-                });
-                break;
-            }
-            default:
-                await sock.sendMessage(from, { text: "Comando de admin no reconocido." });
-        }
-
-    } catch (err) {
-        console.error("Error en admin.js:", err);
-        await sock.sendMessage(from, { text: "Ocurrió un error ejecutando el comando de admin." });
+  switch (subcmd) {
+    case "warn": {
+      warns[target] = (warns[target] || 0) + 1;
+      saveWarns(warns);
+      await sock.sendMessage(from, {
+        text: `⚠️ Usuario @${target.split("@")[0]} recibió un warn.\nTotal: ${warns[target]}`,
+        mentions: [target],
+      });
+      if (warns[target] >= 3) {
+        await sock.groupParticipantsUpdate(from, [target], "remove");
+        warns[target] = 0;
+        saveWarns(warns);
+      }
+      break;
     }
-};
+
+    case "unwarn": {
+      warns[target] = Math.max((warns[target] || 0) - 1, 0);
+      saveWarns(warns);
+      await sock.sendMessage(from, {
+        text: `✅ Warn eliminado. Usuario @${target.split("@")[0]} ahora tiene ${warns[target]} warns.`,
+        mentions: [target],
+      });
+      break;
+    }
+
+    case "listadv": {
+      let msg = "📋 Lista de warns:\n\n";
+      for (const [user, count] of Object.entries(warns)) {
+        msg += `- @${user.split("@")[0]}: ${count}\n`;
+      }
+      await sock.sendMessage(from, { text: msg || "📋 No hay warns registrados.", mentions: Object.keys(warns) });
+      break;
+    }
+
+    case "k": {
+      await sock.groupParticipantsUpdate(from, [target], "remove");
+      await sock.sendMessage(from, { text: `👋 Usuario @${target.split("@")[0]} fue expulsado.`, mentions: [target] });
+      break;
+    }
+
+    default:
+      await sock.sendMessage(from, {
+        text: "⚙️ Comandos de admin:\n- .warn @user\n- .unwarn @user\n- .listadv\n- .k @user",
+      });
+  }
+}

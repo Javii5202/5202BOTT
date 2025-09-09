@@ -1,88 +1,94 @@
-const { exec } = require("child_process");
+// comandos/play.js
 const path = require("path");
 const fs = require("fs");
 const axios = require("axios");
 const chalk = require("chalk");
+const ytdlp = require("yt-dlp-exec");
 
 const downloadsDir = path.join(__dirname, "../downloads");
 if (!fs.existsSync(downloadsDir)) fs.mkdirSync(downloadsDir);
 
-async function play(sock, from, query) {
+module.exports = async function play(sock, from, message, args) {
+  const query = args.join(" ").trim();
+  if (!query) {
+    await sock.sendMessage(from, { text: "Escribí el nombre de la canción que querés reproducir. Ej: `.play Duki Goteo`" });
+    return;
+  }
+
+  try {
+    // Buscar (ytsearch1)
+    let infoRaw = await ytdlp(`ytsearch1:${query}`, { dumpSingleJson: true, skipDownload: true });
+    let info = typeof infoRaw === "string" ? JSON.parse(infoRaw) : infoRaw;
+    if (info.entries && info.entries.length) info = info.entries[0];
+
+    const videoId = info.id;
+    const title = info.title || "Sin título";
+    const thumbnailUrl = info.thumbnail;
+    const duration = info.duration_string || "Desconocida";
+    const views = info.view_count || "Desconocidas";
+    const uploadDate = info.upload_date ? info.upload_date.substring(0,4) : "Desconocido";
+    const videoUrl = info.webpage_url || `https://www.youtube.com/watch?v=${videoId}`;
+
+    const safeBase = title.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0,120) + "_" + Date.now();
+    const outTemplate = path.join(downloadsDir, `${safeBase}.%(ext)s`);
+
+    // Enviar miniatura/info (intento)
     try {
-        if (!query) {
-            await sock.sendMessage(from, { text: "Escribí el nombre de la canción que querés reproducir." });
-            return;
-        }
-
-        // Buscar video en YouTube usando JSON
-        const searchCommand = `yt-dlp "ytsearch1:${query}" -j`;
-        exec(searchCommand, async (err, stdout) => {
-            if (err) {
-                console.error(chalk.red("Error al buscar canción:"), err);
-                await sock.sendMessage(from, { text: "Ocurrió un error al buscar la canción." });
-                return;
-            }
-
-            let info;
-            try {
-                info = JSON.parse(stdout);
-            } catch (e) {
-                console.error(chalk.red("Error al parsear JSON:"), e);
-                await sock.sendMessage(from, { text: "No se pudo procesar la información de la canción." });
-                return;
-            }
-
-            const videoId = info.id;
-            const title = info.title;
-            const duration = info.duration_string || "Desconocida";
-            const thumbnailUrl = info.thumbnail;
-            const views = info.view_count || "Desconocidas";
-            const uploadDate = info.upload_date ? info.upload_date.substring(0,4) : "Desconocido";
-            const videoUrl = `https://www.youtube.com/watch?v=${videoId}`;
-
-            const safeName = title.replace(/[^a-zA-Z0-9]/g, "_");
-            const outputPath = path.join(downloadsDir, `${safeName}.mp3`);
-
-            // Enviar miniatura con info
-            try {
-                const response = await axios.get(thumbnailUrl, { responseType: "arraybuffer" });
-                await sock.sendMessage(from, {
-                    image: Buffer.from(response.data),
-                    caption: `🎵 *${title}*\n⏱ Duración: ${duration}\n👁 Vistas: ${views}\n📅 Año: ${uploadDate}\n🔗 ${videoUrl}`,
-                    mentions: []
-                });
-            } catch {
-                await sock.sendMessage(from, { text: `Buscando "${query}" en YouTube...` });
-            }
-
-            // Descargar audio
-            const downloadCommand = `yt-dlp -f bestaudio "${videoUrl}" -x --audio-format mp3 -o "${outputPath}" --ffmpeg-location "C:\\Users\\CUENCA\\Documents\\ffmpeg\\bin" --geo-bypass --add-header "User-Agent: Mozilla/5.0"`;
-
-            exec(downloadCommand, async (downloadErr) => {
-                if (downloadErr) {
-                    console.error(chalk.red("Error al descargar audio:"), downloadErr);
-                    await sock.sendMessage(from, { text: "Ocurrió un error al descargar la canción." });
-                    return;
-                }
-
-                if (fs.existsSync(outputPath)) {
-                    await sock.sendMessage(from, {
-                        audio: fs.readFileSync(outputPath),
-                        mimetype: "audio/mpeg",
-                        fileName: `${safeName}.mp3`
-                    });
-                    console.log(chalk.green(`Audio "${title}" enviado correctamente.`));
-                } else {
-                    await sock.sendMessage(from, { text: "No se pudo descargar la canción." });
-                }
-            });
-        });
-
-    } catch (err) {
-        console.error(chalk.red("Error en play.js:"), err);
-        await sock.sendMessage(from, { text: "Ocurrió un error al intentar reproducir la canción." });
+      const resp = await axios.get(thumbnailUrl, { responseType: "arraybuffer" });
+      await sock.sendMessage(from, {
+        image: Buffer.from(resp.data),
+        caption: `🎵 *${title}*\n⏱ Duración: ${duration}\n👁 Vistas: ${views}\n📅 Año: ${uploadDate}\n🔗 ${videoUrl}`
+      });
+    } catch {
+      await sock.sendMessage(from, { text: `Buscando "${query}" en YouTube...` });
     }
-}
 
-module.exports = play;
+    // Intentar extraer mp3 (requiere ffmpeg). Si falla, fallback a m4a (no requiere ffmpeg normalmente).
+    let downloadedFile = null;
+    try {
+      await ytdlp(videoUrl, {
+        output: outTemplate,
+        extractAudio: true,
+        audioFormat: "mp3",
+        noCallHome: true
+      });
+    } catch (err) {
+      console.warn("Fallo extraer mp3 (posible falta ffmpeg). Intentando descargar m4a/bestaudio...", err?.message || err);
+      // fallback: descargar mejor audio disponible (m4a preferible)
+      try {
+        await ytdlp(videoUrl, {
+          output: outTemplate,
+          format: "bestaudio[ext=m4a]/bestaudio",
+          noCallHome: true
+        });
+      } catch (err2) {
+        console.error("Fallo descargar audio alternativo:", err2);
+        await sock.sendMessage(from, { text: "Ocurrió un error al descargar la canción." });
+        return;
+      }
+    }
 
+    // Buscar el archivo generado (safeBase.*)
+    const files = fs.readdirSync(downloadsDir);
+    const match = files.find(f => f.startsWith(safeBase));
+    if (!match) {
+      await sock.sendMessage(from, { text: "No se encontró el audio descargado." });
+      return;
+    }
+    downloadedFile = path.join(downloadsDir, match);
+    const ext = path.extname(downloadedFile).toLowerCase();
+
+    // Enviar audio al chat
+    const buffer = fs.readFileSync(downloadedFile);
+    const mimetype = ext === ".mp3" ? "audio/mpeg" : (ext === ".m4a" ? "audio/mp4" : "audio/mpeg");
+    await sock.sendMessage(from, { audio: buffer, mimetype, fileName: path.basename(downloadedFile) });
+
+    // opcional: limpiar archivo
+    try { fs.unlinkSync(downloadedFile); } catch {}
+
+    console.log(chalk.green(`Audio "${title}" enviado correctamente.`));
+  } catch (err) {
+    console.error(chalk.red("Error al buscar canción:"), err);
+    await sock.sendMessage(from, { text: "Ocurrió un error al buscar la canción." });
+  }
+};

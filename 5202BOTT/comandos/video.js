@@ -1,88 +1,80 @@
-const { exec } = require("child_process");
+// comandos/video.js
 const path = require("path");
 const fs = require("fs");
 const axios = require("axios");
 const chalk = require("chalk");
+const ytdlp = require("yt-dlp-exec");
 
 const downloadsDir = path.join(__dirname, "../downloads");
 if (!fs.existsSync(downloadsDir)) fs.mkdirSync(downloadsDir);
 
-async function video(sock, from, query) {
+module.exports = async function video(sock, from, message, args) {
+  const query = args.join(" ").trim();
+  if (!query) {
+    await sock.sendMessage(from, { text: "Escribí el nombre del video que querés descargar. Ej: `.video nombre`" });
+    return;
+  }
+
+  try {
+    let infoRaw = await ytdlp(`ytsearch1:${query}`, { dumpSingleJson: true, skipDownload: true });
+    let info = typeof infoRaw === "string" ? JSON.parse(infoRaw) : infoRaw;
+    if (info.entries && info.entries.length) info = info.entries[0];
+
+    const videoId = info.id;
+    const title = info.title || "Sin título";
+    const thumbnailUrl = info.thumbnail;
+    const duration = info.duration_string || "Desconocida";
+    const views = info.view_count || "Desconocidas";
+    const uploadDate = info.upload_date ? info.upload_date.substring(0,4) : "Desconocido";
+    const videoUrl = info.webpage_url || `https://www.youtube.com/watch?v=${videoId}`;
+
+    const safeBase = title.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0,120) + "_" + Date.now();
+    const outTemplate = path.join(downloadsDir, `${safeBase}.%(ext)s`);
+
     try {
-        if (!query) {
-            await sock.sendMessage(from, { text: "Escribí el nombre del video que querés descargar." });
-            return;
-        }
-
-        // Buscar video en YouTube usando JSON
-        const searchCommand = `yt-dlp "ytsearch1:${query}" -j`;
-        exec(searchCommand, async (err, stdout) => {
-            if (err) {
-                console.error(chalk.red("Error al buscar video:"), err);
-                await sock.sendMessage(from, { text: "Ocurrió un error al buscar el video." });
-                return;
-            }
-
-            let info;
-            try {
-                info = JSON.parse(stdout);
-            } catch (e) {
-                console.error(chalk.red("Error al parsear JSON:"), e);
-                await sock.sendMessage(from, { text: "No se pudo procesar la información del video." });
-                return;
-            }
-
-            const videoId = info.id;
-            const title = info.title;
-            const duration = info.duration_string || "Desconocida";
-            const thumbnailUrl = info.thumbnail;
-            const views = info.view_count || "Desconocidas";
-            const uploadDate = info.upload_date ? info.upload_date.substring(0,4) : "Desconocido";
-            const videoUrl = `https://www.youtube.com/watch?v=${videoId}`;
-
-            const safeName = title.replace(/[^a-zA-Z0-9]/g, "_");
-            const outputPath = path.join(downloadsDir, `${safeName}.mp4`);
-
-            // Enviar miniatura con info
-            try {
-                const response = await axios.get(thumbnailUrl, { responseType: "arraybuffer" });
-                await sock.sendMessage(from, {
-                    image: Buffer.from(response.data),
-                    caption: `🎬 *${title}*\n⏱ Duración: ${duration}\n👁 Vistas: ${views}\n📅 Año: ${uploadDate}\n🔗 ${videoUrl}`,
-                    mentions: []
-                });
-            } catch {
-                await sock.sendMessage(from, { text: `Buscando "${query}" en YouTube...` });
-            }
-
-            // Descargar video
-            const downloadCommand = `yt-dlp -f best "${videoUrl}" -o "${outputPath}" --ffmpeg-location "C:\\Users\\CUENCA\\Documents\\ffmpeg\\bin" --geo-bypass --add-header "User-Agent: Mozilla/5.0"`;
-
-            exec(downloadCommand, async (downloadErr) => {
-                if (downloadErr) {
-                    console.error(chalk.red("Error al descargar video:"), downloadErr);
-                    await sock.sendMessage(from, { text: "Ocurrió un error al descargar el video." });
-                    return;
-                }
-
-                if (fs.existsSync(outputPath)) {
-                    await sock.sendMessage(from, {
-                        video: fs.readFileSync(outputPath),
-                        mimetype: "video/mp4",
-                        fileName: `${safeName}.mp4`
-                    });
-                    console.log(chalk.green(`Video "${title}" enviado correctamente.`));
-                } else {
-                    await sock.sendMessage(from, { text: "No se pudo descargar el video." });
-                }
-            });
-        });
-
-    } catch (err) {
-        console.error(chalk.red("Error en video.js:"), err);
-        await sock.sendMessage(from, { text: "Ocurrió un error al intentar descargar el video." });
+      const resp = await axios.get(thumbnailUrl, { responseType: "arraybuffer" });
+      await sock.sendMessage(from, {
+        image: Buffer.from(resp.data),
+        caption: `🎬 *${title}*\n⏱ Duración: ${duration}\n👁 Vistas: ${views}\n📅 Año: ${uploadDate}\n🔗 ${videoUrl}`
+      });
+    } catch {
+      await sock.sendMessage(from, { text: `Buscando "${query}" en YouTube...` });
     }
-}
 
-module.exports = video;
+    // Descargar mejor video disponible (yt-dlp se encarga)
+    try {
+      await ytdlp(videoUrl, {
+        output: outTemplate,
+        format: "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best",
+        mergeOutputFormat: "mp4",
+        noCallHome: true
+      });
+    } catch (err) {
+      console.warn("Fallo descargar formato MP4 exacto, intentando best fallback...", err?.message || err);
+      try {
+        await ytdlp(videoUrl, { output: outTemplate, format: "best", noCallHome: true });
+      } catch (err2) {
+        console.error("Fallo descargar video:", err2);
+        await sock.sendMessage(from, { text: "Ocurrió un error al descargar el video." });
+        return;
+      }
+    }
 
+    const files = fs.readdirSync(downloadsDir);
+    const match = files.find(f => f.startsWith(safeBase));
+    if (!match) {
+      await sock.sendMessage(from, { text: "No se encontró el video descargado." });
+      return;
+    }
+    const downloadedFile = path.join(downloadsDir, match);
+    const buffer = fs.readFileSync(downloadedFile);
+    await sock.sendMessage(from, { video: buffer, mimetype: "video/mp4", fileName: path.basename(downloadedFile) });
+
+    try { fs.unlinkSync(downloadedFile); } catch {}
+
+    console.log(chalk.green(`Video "${title}" enviado correctamente.`));
+  } catch (err) {
+    console.error(chalk.red("Error al buscar video:"), err);
+    await sock.sendMessage(from, { text: "Ocurrió un error al intentar descargar el video." });
+  }
+};

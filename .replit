@@ -4,6 +4,7 @@ expertMode = true
 
 [nix]
 channel = "stable-25_05"
+packages = ["ffmpeg_6-full"]
 
 [workflows]
 runButton = "Project"
@@ -27,3 +28,7 @@ args = "node index.js"
 
 [workflows.workflow.metadata]
 outputType = "console"
+
+[[ports]]
+localPort = 3000
+externalPort = 80
