@@ -1,9 +1,10 @@
-import fs from "fs";
+import fs from "fs"; 
 import path from "path";
 import ytdl from "ytdl-core";
 import ytSearch from "yt-search";
 import ffmpeg from "fluent-ffmpeg";
 import ffmpegPath from "ffmpeg-static";
+import fetch from "node-fetch"; // Si no lo tenés instalado: npm i node-fetch
 
 const downloadsDir = path.join(process.cwd(), "downloads");
 if (!fs.existsSync(downloadsDir)) fs.mkdirSync(downloadsDir);
@@ -28,6 +29,14 @@ export default async function play(sock, from, m, args) {
 
     const title = video.title;
     const url = video.url;
+
+    // Validar si el video sigue disponible
+    const isValid = await ytdl.validateURL(url);
+    if (!isValid) {
+      await sock.sendMessage(from, { text: "❌ El video ya no está disponible." });
+      return;
+    }
+
     const safeName = title.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 50) + "_" + Date.now();
     const outputPath = path.join(downloadsDir, `${safeName}.mp3`);
 

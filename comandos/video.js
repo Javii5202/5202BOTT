@@ -2,6 +2,7 @@ import fs from "fs";
 import path from "path";
 import ytdl from "ytdl-core";
 import ytSearch from "yt-search";
+import fetch from "node-fetch"; // npm i node-fetch si no lo tenés
 
 const downloadsDir = path.join(process.cwd(), "downloads");
 if (!fs.existsSync(downloadsDir)) fs.mkdirSync(downloadsDir);
@@ -24,6 +25,14 @@ export default async function video(sock, from, m, args) {
 
     const title = vid.title;
     const url = vid.url;
+
+    // Validar si el video sigue disponible
+    const isValid = await ytdl.validateURL(url);
+    if (!isValid) {
+      await sock.sendMessage(from, { text: "❌ El video ya no está disponible." });
+      return;
+    }
+
     const safeName = title.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 50) + "_" + Date.now();
     const outputPath = path.join(downloadsDir, `${safeName}.mp4`);
 
@@ -64,3 +73,4 @@ export default async function video(sock, from, m, args) {
     await sock.sendMessage(from, { text: "❌ Error al descargar el video." });
   }
 }
+

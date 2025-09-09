@@ -1,30 +1,22 @@
-export default async function warn(sock, from, m, args, quotedMessage, { isAdmin, isOwner }) {
+import fs from "fs";
+
+export default async function warn(m, args, client) {
   try {
-    if (!isAdmin && !isOwner) {
-      await sock.sendMessage(from, { text: "⚠️ Solo admins o el owner pueden usar este comando." });
-      return;
+    const user = args[0];
+    if (!user) return client.sendMessage(m.chat, "Debes mencionar un usuario");
+
+    const warnsPath = "./warns.json";
+    let warns = {};
+    if (fs.existsSync(warnsPath)) {
+      warns = JSON.parse(fs.readFileSync(warnsPath, "utf8") || "{}");
     }
 
-    if (!args[0]) {
-      await sock.sendMessage(from, { text: "⚠️ Debes mencionar a alguien para advertir." });
-      return;
-    }
+    warns[user] = (warns[user] || 0) + 1;
+    fs.writeFileSync(warnsPath, JSON.stringify(warns, null, 2));
 
-    const target = args[0]; // Ejemplo: "@59896105392"
-    const warningsFile = "./warnings.json";
-    let warnings = {};
-
-    if (fs.existsSync(warningsFile)) {
-      warnings = JSON.parse(fs.readFileSync(warningsFile, "utf-8"));
-    }
-
-    if (!warnings[target]) warnings[target] = 0;
-    warnings[target] += 1;
-
-    fs.writeFileSync(warningsFile, JSON.stringify(warnings, null, 2));
-
-    await sock.sendMessage(from, { text: `⚠️ ${target} ahora tiene ${warnings[target]} advertencia(s).` });
-  } catch (err) {
-    console.error("Error en warn:", err);
+    client.sendMessage(m.chat, `Usuario ${user} ahora tiene ${warns[user]} warn(s)`);
+  } catch (e) {
+    console.error("Error en warn.js:", e);
+    client.sendMessage(m.chat, "Ocurrió un error al dar el warn ❌");
   }
 }

@@ -1,4 +1,3 @@
-// comandos/economy-lib.js
 import fs from "fs";
 import path from "path";
 
@@ -25,30 +24,24 @@ export function saveEconomia(data) {
   }
 }
 
+// inicializa usuario si no existe
 export function initUser(economia, user) {
   if (!user) return;
-  if (!economia[user]) {
-    economia[user] = {
-      dinero: 0,
-      lastWork: 0,
-      lastBeg: 0,
-      lastSteal: 0,
-      lastDaily: 0
-    };
-  } else {
-    // asegurar campos
-    economia[user].dinero = economia[user].dinero || 0;
-    economia[user].lastWork = economia[user].lastWork || 0;
-    economia[user].lastBeg = economia[user].lastBeg || 0;
-    economia[user].lastSteal = economia[user].lastSteal || 0;
-    economia[user].lastDaily = economia[user].lastDaily || 0;
-  }
+  economia[user] ||= {
+    dinero: 0,
+    lastWork: 0,
+    lastBeg: 0,
+    lastSteal: 0,
+    lastDaily: 0
+  };
 }
 
+// random
 export function getRandom(min, max) {
   return Math.floor(Math.random() * (max - min + 1)) + min;
 }
 
+// formato ms
 export function formatMs(ms) {
   const sec = Math.max(0, Math.floor(ms / 1000));
   const minutes = Math.floor(sec / 60);
@@ -56,17 +49,15 @@ export function formatMs(ms) {
   return `${minutes}m ${seconds}s`;
 }
 
+// obtiene sender (grupos/privados)
 export function getSender(m) {
-  // participant en grupos, remoteJid en privados
   return m?.key?.participant || m?.key?.remoteJid;
 }
 
+// obtiene el primer mencionado o el citado
 export function getMentionedOrQuoted(m) {
-  // Primero mentions
   const mentioned = m?.message?.extendedTextMessage?.contextInfo?.mentionedJid;
-  if (mentioned && mentioned.length) return mentioned[0];
-  // Si fue reply -> participant del quoted message
-  const quotedParticipant = m?.message?.extendedTextMessage?.contextInfo?.participant;
-  if (quotedParticipant) return quotedParticipant;
-  return null;
+  if (mentioned?.length) return mentioned[0];
+  const quoted = m?.message?.extendedTextMessage?.contextInfo?.participant;
+  return quoted || null;
 }

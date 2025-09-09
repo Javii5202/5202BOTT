@@ -62,6 +62,7 @@ async function startBot() {
 
     sock.ev.on("creds.update", saveCreds);
 
+    // Manejo de conexión
     sock.ev.on("connection.update", (update) => {
       const { connection, qr, lastDisconnect } = update;
 
@@ -69,13 +70,23 @@ async function startBot() {
       if (connection === "open") console.log(chalk.green("✅ Bot conectado a WhatsApp!"));
 
       if (connection === "close") {
-        const shouldReconnect =
-          lastDisconnect?.error?.output?.statusCode !== DisconnectReason.loggedOut;
+        const reasonCode = lastDisconnect?.error?.output?.statusCode;
+
+        if (reasonCode === 409) { // conflicto de sesión
+          console.log(chalk.red("⚠️ Sesión reemplazada, eliminando archivo de sesión..."));
+          fs.rmSync(path.join(__dirname, "session"), { recursive: true, force: true });
+          console.log(chalk.yellow("🔄 Reiniciando bot para escanear QR..."));
+          setTimeout(startBot, 1000);
+          return;
+        }
+
+        const shouldReconnect = reasonCode !== DisconnectReason.loggedOut;
         console.log(chalk.yellow("⚠️ Conexión cerrada."), lastDisconnect?.error || "");
         if (shouldReconnect) setTimeout(startBot, 5000);
       }
     });
 
+    // Manejo de mensajes
     sock.ev.on("messages.upsert", async ({ messages }) => {
       try {
         const m = messages[0];
