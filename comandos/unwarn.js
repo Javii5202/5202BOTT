@@ -1,4 +1,3 @@
-// comandos/unwarn.js
 import fs from "fs";
 import path from "path";
 
@@ -8,7 +7,9 @@ function loadDB() {
   if (!fs.existsSync(DB)) return {};
   try { return JSON.parse(fs.readFileSync(DB, "utf8")); } catch { return {}; }
 }
+
 function saveDB(data) { fs.writeFileSync(DB, JSON.stringify(data, null, 2)); }
+
 function normalizeJid(jid) {
   if (!jid) return jid;
   if (jid.endsWith("@g.us")) return jid;
@@ -19,6 +20,7 @@ function normalizeJid(jid) {
   if (/^\d+$/.test(jid)) return `${jid}@s.whatsapp.net`;
   return jid;
 }
+
 function getTargetId(m, args) {
   const mentions = m?.message?.extendedTextMessage?.contextInfo?.mentionedJid || [];
   if (mentions.length) return normalizeJid(mentions[0]);
@@ -33,9 +35,8 @@ function getTargetId(m, args) {
 }
 
 export default async function unwarn(sock, from, m, args) {
-  console.log("unwarn", args);
-  const chat = await sock.groupMetadata(from).catch(()=>null);
-  if(!chat) return await sock.sendMessage(from, { text: "⚠️ Solo en grupos." });
+  const chat = await sock.groupMetadata(from).catch(() => null);
+  if (!chat) return await sock.sendMessage(from, { text: "⚠️ Solo en grupos." });
 
   const sender = m.key.participant || m.key.remoteJid;
   const isAdmin = chat.participants.some(p => p.id === sender && (p.admin === "admin" || p.admin === "superadmin"));

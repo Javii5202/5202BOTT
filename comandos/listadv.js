@@ -1,4 +1,3 @@
-// comandos/listadv.js
 import fs from "fs";
 import path from "path";
 
@@ -10,9 +9,8 @@ function loadDB() {
 }
 
 export default async function listadv(sock, from, m, args) {
-  console.log("listadv", from);
-  const chat = await sock.groupMetadata(from).catch(()=>null);
-  if (!chat) return await sock.sendMessage(from, { text: "⚠️ Este comando funciona solamente en grupos." });
+  const chat = await sock.groupMetadata(from).catch(() => null);
+  if (!chat) return await sock.sendMessage(from, { text: "⚠️ Este comando funciona solo en grupos." });
 
   const db = loadDB();
   const warnsForChat = db[from] || {};
@@ -23,5 +21,6 @@ export default async function listadv(sock, from, m, args) {
   for (const user of keys) {
     msg += `- @${user.split("@")[0]}: ${warnsForChat[user]}\n`;
   }
+
   await sock.sendMessage(from, { text: msg, mentions: keys });
 }

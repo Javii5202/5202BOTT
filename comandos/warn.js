@@ -1,4 +1,3 @@
-// comandos/warn.js
 import fs from "fs";
 import path from "path";
 
@@ -8,6 +7,7 @@ function loadDB() {
   if (!fs.existsSync(DB)) return {};
   try { return JSON.parse(fs.readFileSync(DB, "utf8")); } catch { return {}; }
 }
+
 function saveDB(data) { fs.writeFileSync(DB, JSON.stringify(data, null, 2)); }
 
 function normalizeJid(jid) {
@@ -35,17 +35,15 @@ function getTargetId(m, args) {
 }
 
 export default async function warn(sock, from, m, args) {
-  console.log("warn command", args);
-  // solo en grupos
-  const chat = await sock.groupMetadata(from).catch(()=>null);
-  if(!chat) return await sock.sendMessage(from, { text: "⚠️ Este comando solo funciona en grupos." });
+  const chat = await sock.groupMetadata(from).catch(() => null);
+  if (!chat) return await sock.sendMessage(from, { text: "⚠️ Este comando solo funciona en grupos." });
 
   const sender = m.key.participant || m.key.remoteJid;
   const isAdmin = chat.participants.some(p => p.id === sender && (p.admin === "admin" || p.admin === "superadmin"));
   if (!isAdmin) return await sock.sendMessage(from, { text: "❌ Solo administradores pueden usar este comando." });
 
   const target = getTargetId(m, args);
-  if (!target) return await sock.sendMessage(from, { text: "⚠️ Menciona o responde al usuario a quien querés advertir." });
+  if (!target) return await sock.sendMessage(from, { text: "⚠️ Menciona o responde al usuario a quien quieres advertir." });
 
   const db = loadDB();
   db[from] = db[from] || {};
@@ -58,15 +56,22 @@ export default async function warn(sock, from, m, args) {
     mentions: [target]
   });
 
+  // Expulsión automática si alcanza 3 warns
   if (count >= 3) {
+    const botAdmin = chat.participants.some(p => p.id === sock.user.id && (p.admin === "admin" || p.admin === "superadmin"));
+    const targetAdmin = chat.participants.some(p => p.id === target && (p.admin === "admin" || p.admin === "superadmin"));
+
+    if (!botAdmin) return await sock.sendMessage(from, { text: "❌ No puedo expulsar: no soy admin del grupo." });
+    if (targetAdmin) return await sock.sendMessage(from, { text: "❌ No puedo expulsar a un admin del grupo." });
+
     try {
       await sock.groupParticipantsUpdate(from, [target], "remove");
       db[from][target] = 0;
       saveDB(db);
       await sock.sendMessage(from, { text: `🚨 Usuario @${target.split("@")[0]} expulsado por 3 warns.`, mentions: [target] });
     } catch (e) {
-      console.error("No pude expulsar al usuario:", e);
-      await sock.sendMessage(from, { text: "❌ No pude expulsar al usuario (revisa permisos del bot)." });
+      console.error("Error expulsando usuario:", e);
+      await sock.sendMessage(from, { text: "❌ No pude expulsar al usuario (revisa permisos)." });
     }
   }
 }
