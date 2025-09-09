@@ -15,29 +15,42 @@ import { fileURLToPath } from "url";
 dotenv.config();
 
 const PREFIX = ".";
-const OWNER_NUMBER = process.env.OWNER_NUMBER; 
+const OWNER_NUMBER = process.env.OWNER_NUMBER;
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const COMANDOS_DIR = path.join(__dirname, "comandos");
 
-// Cargar comandos dinámicamente
+// Objeto para almacenar los comandos
 const comandos = {};
-if (fs.existsSync(COMANDOS_DIR)) {
-  for (const file of fs.readdirSync(COMANDOS_DIR).filter(f => f.endsWith(".js"))) {
+
+// Función para cargar comandos
+async function loadCommands() {
+  if (!fs.existsSync(COMANDOS_DIR)) return;
+  const archivos = fs.readdirSync(COMANDOS_DIR).filter(f => f.endsWith(".js"));
+
+  for (const file of archivos) {
     try {
       const nombre = file.replace(".js", "").toLowerCase();
       const ruta = path.join(COMANDOS_DIR, file);
       const mod = await import(`file://${ruta}`);
-      comandos[nombre] = mod.default;
-      console.log(chalk.blue(`✅ Comando cargado: ${nombre}`));
+      
+      if (mod.default && typeof mod.default === "function") {
+        comandos[nombre] = mod.default;
+        console.log(chalk.blue(`✅ Comando cargado: ${nombre}`));
+      } else {
+        console.log(chalk.yellow(`⚠️ El comando ${nombre} no tiene export default o no es una función`));
+      }
     } catch (err) {
       console.error(chalk.red(`❌ Error cargando comando ${file}:`), err);
     }
   }
 }
 
+// Función principal del bot
 async function startBot() {
   try {
+    await loadCommands();
+
     const { state, saveCreds } = await useMultiFileAuthState(path.join(__dirname, "session"));
     const { version } = await fetchLatestBaileysVersion();
 
@@ -50,13 +63,14 @@ async function startBot() {
     sock.ev.on("creds.update", saveCreds);
 
     sock.ev.on("connection.update", (update) => {
-      const { connection, lastDisconnect, qr } = update;
+      const { connection, qr, lastDisconnect } = update;
 
       if (qr) qrcode.generate(qr, { small: true });
       if (connection === "open") console.log(chalk.green("✅ Bot conectado a WhatsApp!"));
 
       if (connection === "close") {
-        const shouldReconnect = lastDisconnect?.error?.output?.statusCode !== DisconnectReason.loggedOut;
+        const shouldReconnect =
+          lastDisconnect?.error?.output?.statusCode !== DisconnectReason.loggedOut;
         console.log(chalk.yellow("⚠️ Conexión cerrada."), lastDisconnect?.error || "");
         if (shouldReconnect) setTimeout(startBot, 5000);
       }
@@ -77,28 +91,26 @@ async function startBot() {
           m.message.videoMessage?.caption ||
           "";
 
-        console.log("📨 Mensaje recibido:", text);
-
         if (!text || !text.startsWith(PREFIX)) return;
 
-        const parts = text.slice(PREFIX.length).trim().split(/ +/);
+        const withoutPrefix = text.slice(PREFIX.length).trim();
+        const parts = withoutPrefix.split(/ +/);
         const cmd = parts.shift().toLowerCase();
         const args = parts;
 
         const quotedMessage = m.message.extendedTextMessage?.contextInfo?.quotedMessage;
 
-        // Verificación de permisos
         const metadata = from.endsWith("@g.us") ? await sock.groupMetadata(from) : null;
         const participants = metadata?.participants || [];
         const isAdmin = participants.some(p => p.id === sender && p.admin);
         const isOwner = sender === OWNER_NUMBER;
 
         if (comandos[cmd]) {
-          console.log(chalk.cyan(`💬 Ejecutando comando: ${cmd} | args: ${args}`));
+          console.log(chalk.cyan(`💬 Comando detectado: ${cmd} | args: ${args}`));
           try {
             await comandos[cmd](sock, from, m, args, quotedMessage, { isAdmin, isOwner });
           } catch (err) {
-            console.error(chalk.red(`❌ Error en ${cmd}:`), err);
+            console.error(chalk.red(`❌ Error ejecutando comando ${cmd}:`), err);
             await sock.sendMessage(from, { text: "❌ Ocurrió un error al ejecutar el comando." });
           }
         }
@@ -107,20 +119,11 @@ async function startBot() {
       }
     });
 
-    // Manejar conflictos de sesión
-    sock.ws.on("close", async (code, reason) => {
-      if (code === 440) {
-        console.log(chalk.yellow("⚠️ Sesión reemplazada. Reconectando..."));
-        await startBot();
-      }
-    });
-
     // Servidor web
     const app = express();
-    app.get("/", (req, res) => res.send("Bot activo!"));
+    app.get("/", (req, res) => res.send("Bot activo 5202!"));
     const PORT = process.env.PORT || 3000;
     app.listen(PORT, () => console.log(chalk.green(`🌐 Servidor web escuchando en puerto ${PORT}`)));
-
   } catch (err) {
     console.error(chalk.red("💀 Error crítico al iniciar el bot:"), err);
     setTimeout(startBot, 5000);
