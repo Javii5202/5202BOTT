@@ -11,6 +11,7 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "fluent-ffmpeg": "^2.1.2"
     "@adiwajshing/baileys": "^5.0.0",
     "@whiskeysockets/baileys": "^6.7.19",
     "axios": "^1.11.0",
