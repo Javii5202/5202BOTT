@@ -1,4 +1,3 @@
-import crypto from "crypto";
 import makeWASocket, {
   DisconnectReason,
   fetchLatestBaileysVersion,
@@ -20,7 +19,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const COMANDOS_DIR = path.join(__dirname, "comandos");
 
-// Cargar comandos dinámicamente
+// 📂 Cargar comandos dinámicamente
 const comandos = {};
 if (fs.existsSync(COMANDOS_DIR)) {
   for (const file of fs.readdirSync(COMANDOS_DIR).filter(f => f.endsWith(".js"))) {
@@ -44,7 +43,7 @@ async function startBot() {
     const sock = makeWASocket({
       version,
       auth: state,
-      printQRInTerminal: false,
+      printQRInTerminal: true,
     });
 
     sock.ev.on("creds.update", saveCreds);
@@ -78,42 +77,33 @@ async function startBot() {
           m.message.videoMessage?.caption ||
           "";
 
-        console.log("📨 Mensaje recibido:", text);
+        if (!text.startsWith(PREFIX)) return;
 
-        if (!text || !text.startsWith(PREFIX)) return;
-
-        const withoutPrefix = text.slice(PREFIX.length).trim();
-        const parts = withoutPrefix.split(/ +/);
+        const parts = text.slice(PREFIX.length).trim().split(/ +/);
         const cmd = parts.shift().toLowerCase();
         const args = parts;
 
-        const quotedMessage = m.message.extendedTextMessage?.contextInfo?.quotedMessage;
-
-        // 🔑 Verificación de permisos
         const metadata = from.endsWith("@g.us") ? await sock.groupMetadata(from) : null;
         const participants = metadata?.participants || [];
         const isAdmin = participants.some(p => p.id === sender && p.admin);
         const isOwner = sender === OWNER_NUMBER;
 
         if (comandos[cmd]) {
-          console.log(chalk.cyan(`💬 Comando detectado: ${cmd} | args: ${args}`));
-          try {
-            await comandos[cmd](sock, from, m, args, quotedMessage, { isAdmin, isOwner });
-          } catch (err) {
-            console.error(chalk.red(`❌ Error ejecutando comando ${cmd}:`), err);
-            await sock.sendMessage(from, { text: "❌ Ocurrió un error al ejecutar el comando." });
-          }
+          console.log(chalk.cyan(`💬 Ejecutando comando: ${cmd} | args: ${args}`));
+          await comandos[cmd](sock, from, m, args, null, { isAdmin, isOwner });
         }
       } catch (err) {
         console.error(chalk.red("❌ Error manejando mensaje:"), err);
       }
     });
 
-    // Servidor web
+    // 🌐 Servidor web
     const app = express();
     app.get("/", (req, res) => res.send("Bot activo 5202!"));
     const PORT = process.env.PORT || 3000;
-    app.listen(PORT, () => console.log(chalk.green(`🌐 Servidor web escuchando en puerto ${PORT}`)));
+    app.listen(PORT, () =>
+      console.log(chalk.green(`🌐 Servidor web escuchando en puerto ${PORT}`))
+    );
   } catch (err) {
     console.error(chalk.red("💀 Error crítico al iniciar el bot:"), err);
     setTimeout(startBot, 5000);

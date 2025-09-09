@@ -1,56 +1,52 @@
+import ytdl from "ytdl-core";
+import yts from "yt-search";
+import ffmpeg from "fluent-ffmpeg";
+import ffmpegPath from "ffmpeg-static";
 import fs from "fs";
 import path from "path";
-import axios from "axios";
-import ytdlp from "yt-dlp-exec";
 
-const downloadsDir = path.join(process.cwd(), "downloads");
+ffmpeg.setFfmpegPath(ffmpegPath);
 
 export default async function video(sock, from, m, args) {
-  const query = args.join(" ").trim();
-  if (!query) return await sock.sendMessage(from, { text: "❌ Escribí el nombre del video. Ej: `.video nombre`" });
-
   try {
-    // Buscar video en YouTube
-    let infoRaw = await ytdlp(`ytsearch1:${query}`, { dumpSingleJson: true, skipDownload: true });
-    let info = typeof infoRaw === "string" ? JSON.parse(infoRaw) : infoRaw;
-    if (info.entries?.length) info = info.entries[0];
-
-    const title = info.title || "Sin título";
-    const videoUrl = info.webpage_url;
-    const thumbnailUrl = info.thumbnail;
-    const duration = info.duration_string || "Desconocida";
-
-    const safeBase = title.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 120) + "_" + Date.now();
-    const outFile = path.join(downloadsDir, `${safeBase}.mp4`);
-
-    // Enviar thumbnail mientras descarga
-    try {
-      const resp = await axios.get(thumbnailUrl, { responseType: "arraybuffer" });
-      await sock.sendMessage(from, {
-        image: Buffer.from(resp.data),
-        caption: `🎬 ${title}\n⏱ Duración: ${duration}\n🔗 ${videoUrl}`
-      });
-    } catch {
-      await sock.sendMessage(from, { text: `Buscando "${query}" en YouTube...` });
+    if (!args.length) {
+      return sock.sendMessage(from, { text: "❌ Uso: .video <nombre o link>" });
     }
 
-    // Descargar video
-    await ytdlp(videoUrl, {
-      output: outFile,
-      format: "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best",
-      mergeOutputFormat: "mp4",
-      noCallHome: true
+    const query = args.join(" ");
+    let url;
+
+    if (ytdl.validateURL(query)) {
+      url = query;
+    } else {
+      const search = await yts(query);
+      if (!search.videos.length) {
+        return sock.sendMessage(from, { text: "❌ No encontré resultados." });
+      }
+      url = search.videos[0].url;
+    }
+
+    const info = await ytdl.getInfo(url);
+    const title = info.videoDetails.title.replace(/[^\w\s]/gi, "");
+    const filePath = path.join("downloads", `${title}.mp4`);
+
+    await new Promise((resolve, reject) => {
+      ffmpeg(ytdl(url, { quality: "highestvideo" }))
+        .videoCodec("libx264")
+        .toFormat("mp4")
+        .save(filePath)
+        .on("end", resolve)
+        .on("error", reject);
     });
 
-    // Enviar video
-    const buffer = fs.readFileSync(outFile);
-    await sock.sendMessage(from, { video: buffer, mimetype: "video/mp4", fileName: `${title}.mp4` });
+    await sock.sendMessage(from, {
+      video: { url: filePath },
+      caption: `🎬 ${info.videoDetails.title}`,
+    });
 
-    // Eliminar temporal
-    fs.unlinkSync(outFile);
-
+    fs.unlinkSync(filePath);
   } catch (err) {
-    console.error("Error en .video:", err);
-    await sock.sendMessage(from, { text: "❌ Ocurrió un error al descargar el video." });
+    console.error("❌ Error en .video:", err);
+    await sock.sendMessage(from, { text: "⚠️ Error descargando el video." });
   }
 }

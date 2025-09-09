@@ -1,44 +1,53 @@
+import ytdl from "ytdl-core";
+import yts from "yt-search";
+import ffmpeg from "fluent-ffmpeg";
+import ffmpegPath from "ffmpeg-static";
 import fs from "fs";
 import path from "path";
-import axios from "axios";
-import ytdlp from "yt-dlp-exec";
 
-const downloadsDir = path.join(process.cwd(), "downloads");
+ffmpeg.setFfmpegPath(ffmpegPath);
 
 export default async function play(sock, from, m, args) {
-  const query = args.join(" ").trim();
-  if (!query) return await sock.sendMessage(from, { text: "❌ Escribí el nombre de la canción. Ej: `.play Duki Goteo`" });
-
   try {
-    // Buscar la canción en YouTube
-    let infoRaw = await ytdlp(`ytsearch1:${query}`, { dumpSingleJson: true, skipDownload: true });
-    let info = typeof infoRaw === "string" ? JSON.parse(infoRaw) : infoRaw;
-    if (info.entries?.length) info = info.entries[0];
+    if (!args.length) {
+      return sock.sendMessage(from, { text: "❌ Uso: .play <nombre o link>" });
+    }
 
-    const title = info.title || "Sin título";
-    const videoUrl = info.webpage_url;
+    const query = args.join(" ");
+    let url;
 
-    // Nombre seguro para archivo
-    const safeBase = title.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 120) + "_" + Date.now();
-    const outFile = path.join(downloadsDir, `${safeBase}.mp3`);
+    if (ytdl.validateURL(query)) {
+      url = query;
+    } else {
+      const search = await yts(query);
+      if (!search.videos.length) {
+        return sock.sendMessage(from, { text: "❌ No encontré resultados." });
+      }
+      url = search.videos[0].url;
+    }
 
-    // Descargar audio
-    await ytdlp(videoUrl, {
-      output: outFile,
-      extractAudio: true,
-      audioFormat: "mp3",
-      noCallHome: true
+    const info = await ytdl.getInfo(url);
+    const title = info.videoDetails.title.replace(/[^\w\s]/gi, "");
+    const filePath = path.join("downloads", `${title}.mp3`);
+
+    await new Promise((resolve, reject) => {
+      ffmpeg(ytdl(url, { filter: "audioonly" }))
+        .audioCodec("libmp3lame")
+        .toFormat("mp3")
+        .save(filePath)
+        .on("end", resolve)
+        .on("error", reject);
     });
 
-    // Enviar audio
-    const buffer = fs.readFileSync(outFile);
-    await sock.sendMessage(from, { audio: buffer, mimetype: "audio/mpeg", fileName: `${title}.mp3` });
+    await sock.sendMessage(from, {
+      audio: { url: filePath },
+      mimetype: "audio/mp4",
+      ptt: false,
+    });
 
-    // Eliminar temporal
-    fs.unlinkSync(outFile);
-
+    fs.unlinkSync(filePath);
   } catch (err) {
-    console.error("Error en .play:", err);
-    await sock.sendMessage(from, { text: "❌ Ocurrió un error al buscar o descargar la canción." });
+    console.error("❌ Error en .play:", err);
+    await sock.sendMessage(from, { text: "⚠️ Error descargando el audio." });
   }
 }
