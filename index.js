@@ -1,3 +1,4 @@
+import crypto from "crypto";
 import makeWASocket, {
   DisconnectReason,
   fetchLatestBaileysVersion,
@@ -14,13 +15,12 @@ import { fileURLToPath } from "url";
 dotenv.config();
 
 const PREFIX = ".";
-const OWNER_NUMBER = process.env.OWNER_NUMBER; // 👑 Número del owner
-
+const OWNER_NUMBER = process.env.OWNER_NUMBER; 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const COMANDOS_DIR = path.join(__dirname, "comandos");
 
-// 📂 Cargar comandos dinámicamente
+// Cargar comandos dinámicamente
 const comandos = {};
 if (fs.existsSync(COMANDOS_DIR)) {
   for (const file of fs.readdirSync(COMANDOS_DIR).filter(f => f.endsWith(".js"))) {
@@ -44,27 +44,24 @@ async function startBot() {
     const sock = makeWASocket({
       version,
       auth: state,
-      printQRInTerminal: true,
+      printQRInTerminal: false,
     });
 
     sock.ev.on("creds.update", saveCreds);
 
-    // 🔹 Eventos de conexión
     sock.ev.on("connection.update", (update) => {
-      const { connection, qr, lastDisconnect } = update;
+      const { connection, lastDisconnect, qr } = update;
 
       if (qr) qrcode.generate(qr, { small: true });
       if (connection === "open") console.log(chalk.green("✅ Bot conectado a WhatsApp!"));
 
       if (connection === "close") {
-        const shouldReconnect =
-          lastDisconnect?.error?.output?.statusCode !== DisconnectReason.loggedOut;
+        const shouldReconnect = lastDisconnect?.error?.output?.statusCode !== DisconnectReason.loggedOut;
         console.log(chalk.yellow("⚠️ Conexión cerrada."), lastDisconnect?.error || "");
         if (shouldReconnect) setTimeout(startBot, 5000);
       }
     });
 
-    // 🔹 Evento de mensajes
     sock.ev.on("messages.upsert", async ({ messages }) => {
       try {
         const m = messages[0];
@@ -80,32 +77,50 @@ async function startBot() {
           m.message.videoMessage?.caption ||
           "";
 
-        if (!text.startsWith(PREFIX)) return;
+        console.log("📨 Mensaje recibido:", text);
+
+        if (!text || !text.startsWith(PREFIX)) return;
 
         const parts = text.slice(PREFIX.length).trim().split(/ +/);
         const cmd = parts.shift().toLowerCase();
         const args = parts;
 
+        const quotedMessage = m.message.extendedTextMessage?.contextInfo?.quotedMessage;
+
+        // Verificación de permisos
         const metadata = from.endsWith("@g.us") ? await sock.groupMetadata(from) : null;
         const participants = metadata?.participants || [];
         const isAdmin = participants.some(p => p.id === sender && p.admin);
         const isOwner = sender === OWNER_NUMBER;
 
-        const comando = comandos[cmd];
-        if (comando) {
+        if (comandos[cmd]) {
           console.log(chalk.cyan(`💬 Ejecutando comando: ${cmd} | args: ${args}`));
-          await comando.execute(sock, { message: m, from, args, isAdmin, isOwner });
+          try {
+            await comandos[cmd](sock, from, m, args, quotedMessage, { isAdmin, isOwner });
+          } catch (err) {
+            console.error(chalk.red(`❌ Error en ${cmd}:`), err);
+            await sock.sendMessage(from, { text: "❌ Ocurrió un error al ejecutar el comando." });
+          }
         }
       } catch (err) {
         console.error(chalk.red("❌ Error manejando mensaje:"), err);
       }
     });
 
-    // 🔹 Servidor web
+    // Manejar conflictos de sesión
+    sock.ws.on("close", async (code, reason) => {
+      if (code === 440) {
+        console.log(chalk.yellow("⚠️ Sesión reemplazada. Reconectando..."));
+        await startBot();
+      }
+    });
+
+    // Servidor web
     const app = express();
-    app.get("/", (req, res) => res.send("Bot activo 5202!"));
+    app.get("/", (req, res) => res.send("Bot activo!"));
     const PORT = process.env.PORT || 3000;
     app.listen(PORT, () => console.log(chalk.green(`🌐 Servidor web escuchando en puerto ${PORT}`)));
+
   } catch (err) {
     console.error(chalk.red("💀 Error crítico al iniciar el bot:"), err);
     setTimeout(startBot, 5000);
