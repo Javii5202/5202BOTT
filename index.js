@@ -34,9 +34,13 @@ async function loadCommands() {
       const ruta = path.join(COMANDOS_DIR, file);
       const mod = await import(`file://${ruta}`);
       
+      // Cargar default o toda la exportación si no hay default
       if (mod.default && typeof mod.default === "function") {
         comandos[nombre] = mod.default;
         console.log(chalk.blue(`✅ Comando cargado: ${nombre}`));
+      } else if (typeof mod === "function") {
+        comandos[nombre] = mod;
+        console.log(chalk.blue(`✅ Comando cargado: ${nombre} (función exportada sin default)`));
       } else {
         console.log(chalk.yellow(`⚠️ El comando ${nombre} no tiene export default o no es una función`));
       }
