@@ -6,11 +6,11 @@ const warnsPath = path.resolve('./assets/warns.json');
 const warnCommand = {
   name: 'warn',
   description: 'Da una advertencia a un usuario',
-  async execute(client, message, args) {
+  async execute(client, { message, from, args, isAdmin, isOwner }) {
     try {
       const mentioned = message.mentionedJid || args[0]; // si es una mención real, toma el JID
       if (!mentioned) {
-        return client.sendMessage(message.from, '❌ Debes mencionar a alguien');
+        return client.sendMessage(from, '❌ Debes mencionar a alguien');
       }
 
       // Leer archivo de warns
@@ -29,10 +29,7 @@ const warnCommand = {
       // Guardar archivo
       await fs.promises.writeFile(warnsPath, JSON.stringify(warns, null, 2));
 
-      await client.sendMessage(
-        message.from,
-        `⚠️ ${mentioned} ahora tiene ${warns[mentioned]} advertencia(s)`
-      );
+      await client.sendMessage(from, `⚠️ ${mentioned} ahora tiene ${warns[mentioned]} advertencia(s)`);
     } catch (err) {
       console.error('Error en warn:', err);
     }
@@ -40,3 +37,4 @@ const warnCommand = {
 };
 
 export default warnCommand;
+
