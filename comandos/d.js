@@ -1,6 +1,5 @@
 // comandos/d.js
-async function __orig_demote(sock, from, m, args) {
-
+export default async function demote(sock, from, m, args) {
   const normalizeJid = (jid) => {
     if (!jid) return jid;
     if (jid.endsWith("@g.us")) return jid;
@@ -43,16 +42,4 @@ async function __orig_demote(sock, from, m, args) {
     console.error("demote error:", e);
     await sock.sendMessage(from, { text: "❌ No pude degradar al usuario (revisa permisos)." });
   }
-
 }
-
-
-export default async function command_handler(sock, from, m, args, quotedMessage, meta) {
-  try {
-    return await __orig_demote(sock, from, m, args);
-  } catch (err) {
-    console.error("Error wrapper ejecutando comando d.js:", err);
-    throw err;
-  }
-}
-

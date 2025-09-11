@@ -8,8 +8,7 @@ function loadDB() {
   try { return JSON.parse(fs.readFileSync(DB, "utf8")); } catch { return {}; }
 }
 
-async function __orig_listadv(sock, from, m, args) {
-
+export default async function listadv(sock, from, m, args) {
   const chat = await sock.groupMetadata(from).catch(() => null);
   if (!chat) return await sock.sendMessage(from, { text: "⚠️ Este comando funciona solo en grupos." });
 
@@ -24,16 +23,4 @@ async function __orig_listadv(sock, from, m, args) {
   }
 
   await sock.sendMessage(from, { text: msg, mentions: keys });
-
 }
-
-
-export default async function command_handler(sock, from, m, args, quotedMessage, meta) {
-  try {
-    return await __orig_listadv(sock, from, m, args);
-  } catch (err) {
-    console.error("Error wrapper ejecutando comando listadv.js:", err);
-    throw err;
-  }
-}
-

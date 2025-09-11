@@ -1,22 +1,28 @@
-import axios from "axios";
-import * as cheerio from "cheerio";
+import fetch from "node-fetch";
 
-export default async function imagen(sock, from, m, args) {
-  try {
+export default {
+  name: "imagen",
+  description: "Busca una imagen en Google y la envía",
+  async execute(sock, m, args) {
     if (!args.length) {
-      await sock.sendMessage(from, { text: "⚠️ Uso: .imagen <término>" });
-      return;
+      return sock.sendMessage(m.key.remoteJid, { text: "❌ Usa: .imagen <búsqueda>" });
     }
+
     const query = args.join(" ");
-    const url = `https://www.google.com/search?tbm=isch&q=${encodeURIComponent(query)}`;
-    const { data } = await axios.get(url, {
-      headers: { "User-Agent": "Mozilla/5.0" }
-    });
-    const $ = cheerio.load(data);
-    const img = $("img").eq(1).attr("src");
-    if (!img) throw new Error("No se encontró imagen");
-    await sock.sendMessage(from, { image: { url: img }, caption: `🖼️ Resultado: ${query}` });
-  } catch (err) {
-    await sock.sendMessage(from, { text: "❌ No pude obtener la imagen." });
+    try {
+      const url = `https://www.googleapis.com/customsearch/v1?q=${encodeURIComponent(query)}&cx=${process.env.GOOGLE_CX}&searchType=image&key=${process.env.GOOGLE_API_KEY}`;
+      const res = await fetch(url);
+      const data = await res.json();
+
+      if (!data.items || !data.items.length) {
+        return sock.sendMessage(m.key.remoteJid, { text: "❌ No encontré imágenes." });
+      }
+
+      const imageUrl = data.items[0].link;
+      await sock.sendMessage(m.key.remoteJid, { image: { url: imageUrl }, caption: `🖼 Resultado para: ${query}` });
+    } catch (err) {
+      console.error("Error en .imagen:", err);
+      await sock.sendMessage(m.key.remoteJid, { text: "⚠️ Error buscando la imagen." });
+    }
   }
-}
+};

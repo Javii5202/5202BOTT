@@ -7,8 +7,7 @@ import {
   getSender
 } from "./economy-lib.js";
 
-async function __orig_rt(sock, from, m, args) {
-
+export default async function rt(sock, from, m, args) {
   try {
     const sender = getSender(m);
     if (!sender) return;
@@ -41,16 +40,4 @@ async function __orig_rt(sock, from, m, args) {
     console.error("Error en rt:", e);
     await sock.sendMessage(from, { text: "❌ Ocurrió un error en el comando .rt" });
   }
-
 }
-
-
-export default async function command_handler(sock, from, m, args, quotedMessage, meta) {
-  try {
-    return await __orig_rt(sock, from, m, args);
-  } catch (err) {
-    console.error("Error wrapper ejecutando comando rt.js:", err);
-    throw err;
-  }
-}
-

@@ -29,8 +29,7 @@ const descriptions = {
   steal: "🕵️ Intentar robar dinero a alguien (50% de éxito). Uso: .steal @usuario <cantidad>"
 };
 
-async function __orig_help(sock, from, args) {
-
+export default async function help(sock, from, args) {
   // Aseguramos que args sea un array válido
   args = Array.isArray(args) ? args : [];
 
@@ -54,16 +53,4 @@ async function __orig_help(sock, from, args) {
   }
 
   await sock.sendMessage(from, { text: `📖 AYUDA DE .${cmd.toLowerCase()}\n\n${desc}` });
-
 }
-
-
-export default async function command_handler(sock, from, m, args, quotedMessage, meta) {
-  try {
-    return await __orig_help(sock, from, args);
-  } catch (err) {
-    console.error("Error wrapper ejecutando comando help.js:", err);
-    throw err;
-  }
-}
-

@@ -1,10 +1,14 @@
-import crypto from "crypto";
+import { webcrypto } from "crypto";
+if (!globalThis.crypto) {
+  globalThis.crypto = webcrypto;
+}
 import makeWASocket, {
   DisconnectReason,
   fetchLatestBaileysVersion,
   useMultiFileAuthState,
 } from "@whiskeysockets/baileys";
-import qrcode from "qrcode-terminal";
+import qrcodeTerminal from "qrcode-terminal";
+import QRCode from "qrcode";
 import chalk from "chalk";
 import dotenv from "dotenv";
 import fs from "fs";
@@ -15,15 +19,16 @@ import { fileURLToPath } from "url";
 dotenv.config();
 
 const PREFIX = ".";
-const OWNER_NUMBER = process.env.OWNER_NUMBER;
+const OWNER_NUMBER = process.env.OWNER_NUMBER || '';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const COMANDOS_DIR = path.join(__dirname, "comandos");
+const QR_PATH = path.join(process.cwd(), "qr.png");
 
 // Objeto para almacenar los comandos
 const comandos = {};
 
-// Función para cargar comandos
+// Carga de comandos (soporta varias formas de export)
 async function loadCommands() {
   if (!fs.existsSync(COMANDOS_DIR)) return;
   const archivos = fs.readdirSync(COMANDOS_DIR).filter(f => f.endsWith(".js"));
@@ -33,14 +38,15 @@ async function loadCommands() {
       const nombre = file.replace(".js", "").toLowerCase();
       const ruta = path.join(COMANDOS_DIR, file);
       const mod = await import(`file://${ruta}`);
-      
-      // Cargar default o toda la exportación si no hay default
-      if (mod.default && typeof mod.default === "function") {
-        comandos[nombre] = mod.default;
+      let handler = null;
+
+      if (typeof mod === 'function') handler = mod;
+      else if (mod && typeof mod.default === 'function') handler = mod.default;
+      else if (mod && mod.default && typeof mod.default.execute === 'function') handler = mod.default.execute;
+
+      if (handler) {
+        comandos[nombre] = handler;
         console.log(chalk.blue(`✅ Comando cargado: ${nombre}`));
-      } else if (typeof mod === "function") {
-        comandos[nombre] = mod;
-        console.log(chalk.blue(`✅ Comando cargado: ${nombre} (función exportada sin default)`));
       } else {
         console.log(chalk.yellow(`⚠️ El comando ${nombre} no tiene export default o no es una función`));
       }
@@ -50,10 +56,44 @@ async function loadCommands() {
   }
 }
 
-// Función principal del bot
+// Restore session from SESSION env (if provided as base64 or JSON string)
+function restoreSessionFromEnv() {
+  try {
+    const sess = process.env.SESSION;
+    if (!sess) return false;
+    const sessDir = path.join(__dirname, "session");
+    if (!fs.existsSync(sessDir)) fs.mkdirSync(sessDir, { recursive: true });
+    let parsed = null;
+    try {
+      parsed = JSON.parse(sess);
+    } catch (e) {
+      try {
+        parsed = JSON.parse(Buffer.from(sess,'base64').toString('utf8'));
+      } catch (err) {
+        console.warn("SESSION env found but could not parse as JSON or base64(JSON).");
+      }
+    }
+    if (parsed && typeof parsed === 'object') {
+      for (const [fname, content] of Object.entries(parsed)) {
+        const target = path.join(sessDir, fname);
+        if (typeof content === 'object') fs.writeFileSync(target, JSON.stringify(content, null, 2));
+        else fs.writeFileSync(target, content);
+      }
+      console.log("🔐 Session restored from SESSION environment variable.");
+      return true;
+    }
+  } catch (e) {
+    console.warn("Error restoring session from env:", e);
+  }
+  return false;
+}
+
 async function startBot() {
   try {
     await loadCommands();
+
+    // restore session from env if provided
+    restoreSessionFromEnv();
 
     const { state, saveCreds } = await useMultiFileAuthState(path.join(__dirname, "session"));
     const { version } = await fetchLatestBaileysVersion();
@@ -66,31 +106,39 @@ async function startBot() {
 
     sock.ev.on("creds.update", saveCreds);
 
-    // Manejo de conexión
-    sock.ev.on("connection.update", (update) => {
+    // connection update with better reconnection policy
+    sock.ev.on("connection.update", async (update) => {
       const { connection, qr, lastDisconnect } = update;
 
-      if (qr) qrcode.generate(qr, { small: true });
-      if (connection === "open") console.log(chalk.green("✅ Bot conectado a WhatsApp!"));
+      if (qr) {
+        try {
+          // generate png for remote scanning
+          await QRCode.toFile(QR_PATH, qr, { type: "png", width: 400 });
+          console.log("📸 QR generado en /qr (endpoint) - abrí tu URL de Render y agrega /qr");
+        } catch (e) {
+          console.warn("No se pudo generar QR png:", e);
+        }
+        // also show ascii for local terminal
+        qrcodeTerminal.generate(qr, { small: true });
+      }
+
+      if (connection === "open") {
+        console.log(chalk.green("✅ Bot conectado a WhatsApp!"));
+      }
 
       if (connection === "close") {
-        const reasonCode = lastDisconnect?.error?.output?.statusCode;
-
-        if (reasonCode === 409) { // conflicto de sesión
-          console.log(chalk.red("⚠️ Sesión reemplazada, eliminando archivo de sesión..."));
-          fs.rmSync(path.join(__dirname, "session"), { recursive: true, force: true });
-          console.log(chalk.yellow("🔄 Reiniciando bot para escanear QR..."));
-          setTimeout(startBot, 1000);
+        const reasonCode = lastDisconnect?.error?.output?.statusCode || lastDisconnect?.error?.output?.statusCode;
+        console.log(chalk.yellow("⚠️ Conexión cerrada."), lastDisconnect?.error || "");
+        // if logged out, clear session
+        const shouldReconnect = lastDisconnect?.error && lastDisconnect.error.output && lastDisconnect.error.output.statusCode !== DisconnectReason.loggedOut;
+        if (!shouldReconnect) {
+          console.log(chalk.red("🔴 Sesión cerrada, elimina session/ y vuelve a generar sesión si deseas reconectar."));
           return;
         }
-
-        const shouldReconnect = reasonCode !== DisconnectReason.loggedOut;
-        console.log(chalk.yellow("⚠️ Conexión cerrada."), lastDisconnect?.error || "");
-        if (shouldReconnect) setTimeout(startBot, 5000);
+        setTimeout(startBot, 5000);
       }
     });
 
-    // Manejo de mensajes
     sock.ev.on("messages.upsert", async ({ messages }) => {
       try {
         const m = messages[0];
@@ -117,16 +165,23 @@ async function startBot() {
 
         const metadata = from.endsWith("@g.us") ? await sock.groupMetadata(from) : null;
         const participants = metadata?.participants || [];
-        const isAdmin = participants.some(p => p.id === sender && p.admin);
+        const isAdmin = participants.some(p => p.id === sender && (p.admin === "admin" || p.admin === "superadmin"));
         const isOwner = sender === OWNER_NUMBER;
 
         if (comandos[cmd]) {
           console.log(chalk.cyan(`💬 Comando detectado: ${cmd} | args: ${args}`));
           try {
-            await comandos[cmd](sock, from, m, args, quotedMessage, { isAdmin, isOwner });
+            const handler = comandos[cmd];
+            if (typeof handler === 'function') {
+              await handler(sock, from, m, args, quotedMessage, { isAdmin, isOwner });
+            } else if (handler && typeof handler.execute === 'function') {
+              await handler.execute(sock, from, m, args, quotedMessage, { isAdmin, isOwner });
+            } else {
+              console.warn('El handler del comando existe pero no es invocable:', cmd);
+            }
           } catch (err) {
             console.error(chalk.red(`❌ Error ejecutando comando ${cmd}:`), err);
-            await sock.sendMessage(from, { text: "❌ Ocurrió un error al ejecutar el comando." });
+            try { await sock.sendMessage(from, { text: "❌ Ocurrió un error al ejecutar el comando." }); } catch(e){}
           }
         }
       } catch (err) {
@@ -134,11 +189,16 @@ async function startBot() {
       }
     });
 
-    // Servidor web
+    // Servidor web y endpoint para QR
     const app = express();
     app.get("/", (req, res) => res.send("Bot activo 5202!"));
+    app.get("/qr", (req, res) => {
+      if (fs.existsSync(QR_PATH)) return res.sendFile(QR_PATH);
+      return res.status(404).send("QR no generado aún. Revisa logs o inicia sesión localmente para generar QR.");
+    });
+
     const PORT = process.env.PORT || 3000;
-    app.listen(PORT, () => console.log(chalk.green(`🌐 Servidor web escuchando en puerto ${PORT}`)));
+    app.listen(PORT, '0.0.0.0', () => console.log(chalk.green(`🌐 Servidor web escuchando en puerto ${PORT}`)));
   } catch (err) {
     console.error(chalk.red("💀 Error crítico al iniciar el bot:"), err);
     setTimeout(startBot, 5000);

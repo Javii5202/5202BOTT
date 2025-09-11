@@ -8,8 +8,7 @@ import {
   getSender
 } from "./economy-lib.js";
 
-async function __orig_daily(sock, from, m) {
-
+export default async function daily(sock, from, m) {
   try {
     const sender = getSender(m);
     if (!sender) return;
@@ -38,16 +37,4 @@ async function __orig_daily(sock, from, m) {
     console.error("Error en daily:", e);
     await sock.sendMessage(from, { text: "❌ Ocurrió un error en el comando .daily" });
   }
-
 }
-
-
-export default async function command_handler(sock, from, m, args, quotedMessage, meta) {
-  try {
-    return await __orig_daily(sock, from, m);
-  } catch (err) {
-    console.error("Error wrapper ejecutando comando daily.js:", err);
-    throw err;
-  }
-}
-

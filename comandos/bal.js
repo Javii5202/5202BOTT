@@ -1,8 +1,7 @@
 // comandos/bal.js
 import { loadEconomia, initUser, saveEconomia, getSender } from "./economy-lib.js";
 
-async function __orig_bal(sock, from, m) {
-
+export default async function bal(sock, from, m) {
   try {
     const sender = getSender(m);
     if (!sender) return;
@@ -16,16 +15,4 @@ async function __orig_bal(sock, from, m) {
     console.error("Error en bal:", e);
     await sock.sendMessage(from, { text: "❌ Ocurrió un error en el comando .bal" });
   }
-
 }
-
-
-export default async function command_handler(sock, from, m, args, quotedMessage, meta) {
-  try {
-    return await __orig_bal(sock, from, m);
-  } catch (err) {
-    console.error("Error wrapper ejecutando comando bal.js:", err);
-    throw err;
-  }
-}
-

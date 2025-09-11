@@ -1,8 +1,7 @@
 // comandos/global.js
 import { loadEconomia } from "./economy-lib.js";
 
-async function __orig_globalCmd(sock, from) {
-
+export default async function globalCmd(sock, from) {
   try {
     const economia = loadEconomia();
 
@@ -35,16 +34,4 @@ async function __orig_globalCmd(sock, from) {
     console.error("Error en global:", e);
     await sock.sendMessage(from, { text: "❌ Ocurrió un error en el comando .global" });
   }
-
 }
-
-
-export default async function command_handler(sock, from, m, args, quotedMessage, meta) {
-  try {
-    return await __orig_globalCmd(sock, from);
-  } catch (err) {
-    console.error("Error wrapper ejecutando comando global.js:", err);
-    throw err;
-  }
-}
-

@@ -13,8 +13,6 @@
   "dependencies": {
     "@adiwajshing/baileys": "^5.0.0",
     "@whiskeysockets/baileys": "^6.7.19",
-    "@distube/ytdl-core": "^4.14.4",
-    "ytsr": "^3.8.0",
     "axios": "^1.11.0",
     "canvas": "^3.2.0",
     "chalk": "^4.1.2",
@@ -30,7 +28,9 @@
     "wa-sticker-formatter": "^4.4.4",
     "yt-dlp-exec": "^1.0.2",
     "yt-search": "^2.13.1",
-    "cheerio": "^1.0.0"
+    "@distube/ytdl-core": "^4.14.4",
+    "qrcode": "^1.5.1",
+    "ytsr": "^3.8.0"
   },
   "engines": {
     "node": "20.x"

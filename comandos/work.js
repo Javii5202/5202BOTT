@@ -8,8 +8,7 @@ import {
   getSender
 } from "./economy-lib.js";
 
-async function __orig_work(sock, from, m) {
-
+export default async function work(sock, from, m) {
   try {
     const sender = getSender(m);
     if (!sender) return;
@@ -37,16 +36,4 @@ async function __orig_work(sock, from, m) {
     console.error("Error en work:", e);
     await sock.sendMessage(from, { text: "❌ Ocurrió un error en el comando .work" });
   }
-
 }
-
-
-export default async function command_handler(sock, from, m, args, quotedMessage, meta) {
-  try {
-    return await __orig_work(sock, from, m);
-  } catch (err) {
-    console.error("Error wrapper ejecutando comando work.js:", err);
-    throw err;
-  }
-}
-

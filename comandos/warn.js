@@ -1,35 +1,21 @@
-import fs from "fs";
+import fs from 'fs';
+import path from 'path';
+const WARN_FILE = path.join(process.cwd(),'warns.json');
+function load() { try { return JSON.parse(fs.readFileSync(WARN_FILE,'utf8')||'{}'); } catch(e){ return {}; } }
+function save(d){ fs.writeFileSync(WARN_FILE, JSON.stringify(d,null,2)); }
 
-async function __orig_warn(m, args, client) {
-
+export default async function warn(sock, from, m, args) {
   try {
-    const user = args[0];
-    if (!user) return client.sendMessage(m.chat, "Debes mencionar un usuario");
-
-    const warnsPath = "./warns.json";
-    let warns = {};
-    if (fs.existsSync(warnsPath)) {
-      warns = JSON.parse(fs.readFileSync(warnsPath, "utf8") || "{}");
-    }
-
-    warns[user] = (warns[user] || 0) + 1;
-    fs.writeFileSync(warnsPath, JSON.stringify(warns, null, 2));
-
-    client.sendMessage(m.chat, `Usuario ${user} ahora tiene ${warns[user]} warn(s)`);
-  } catch (e) {
-    console.error("Error en warn.js:", e);
-    client.sendMessage(m.chat, "Ocurrió un error al dar el warn ❌");
-  }
-
-}
-
-
-export default async function command_handler(sock, from, m, args, quotedMessage, meta) {
-  try {
-    return await __orig_warn(m, args, sock);
+    const mentions = m.message.extendedTextMessage?.contextInfo?.mentionedJid || [];
+    const target = mentions[0] || args[0];
+    if (!target) return await sock.sendMessage(from, { text: '❌ Menciona o responde el usuario a amonestar.' });
+    const jid = target.includes('@') ? target : (target + '@s.whatsapp.net');
+    const data = load();
+    data[jid] = (data[jid]||0) + 1;
+    save(data);
+    await sock.sendMessage(from, { text: `⚠️ Usuario ${jid} ahora tiene ${data[jid]} warn(s).` });
   } catch (err) {
-    console.error("Error wrapper ejecutando comando warn.js:", err);
-    throw err;
+    console.error('Error en warn:',err);
+    await sock.sendMessage(from, { text: '❌ Error en Warn.' });
   }
 }
-

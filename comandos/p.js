@@ -1,6 +1,5 @@
 // comandos/p.js
-async function __orig_promote(sock, from, m, args) {
-
+export default async function promote(sock, from, m, args) {
   // reusa lógica de detección
   const normalizeJid = (jid) => {
     if (!jid) return jid;
@@ -44,16 +43,4 @@ async function __orig_promote(sock, from, m, args) {
     console.error("promote error:", e);
     await sock.sendMessage(from, { text: "❌ No pude promover al usuario (revisa permisos)." });
   }
-
 }
-
-
-export default async function command_handler(sock, from, m, args, quotedMessage, meta) {
-  try {
-    return await __orig_promote(sock, from, m, args);
-  } catch (err) {
-    console.error("Error wrapper ejecutando comando p.js:", err);
-    throw err;
-  }
-}
-

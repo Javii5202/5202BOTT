@@ -12,8 +12,7 @@ async function bufferFromStream(stream) {
   return buff;
 }
 
-async function __orig_sticker(sock, from, m, args, quoted) {
-
+export default async function sticker(sock, from, m, args, quoted) {
   try {
     // Debe responder a una imagen o video
     if (!quoted || (!quoted.imageMessage && !quoted.videoMessage)) {
@@ -75,16 +74,4 @@ async function __orig_sticker(sock, from, m, args, quoted) {
     console.error("Error en sticker.js:", err);
     await sock.sendMessage(from, { text: "❌ Ocurrió un error al crear el sticker." });
   }
-
 }
-
-
-export default async function command_handler(sock, from, m, args, quotedMessage, meta) {
-  try {
-    return await __orig_sticker(sock, from, m, args, quotedMessage);
-  } catch (err) {
-    console.error("Error wrapper ejecutando comando sticker.js:", err);
-    throw err;
-  }
-}
-

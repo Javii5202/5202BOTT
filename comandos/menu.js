@@ -1,8 +1,7 @@
 import fs from "fs";
 import path from "path";
 
-async function __orig_mostrarMenu(sock, from) {
-
+export default async function mostrarMenu(sock, from) {
   const menuText = ` ╔═══════ 𝟝𝟚𝟘𝟚 ═══════╗
 ┃    Hola, soy tu bot
 ┃      asistente traper
@@ -53,16 +52,4 @@ async function __orig_mostrarMenu(sock, from) {
 
   const imageBuffer = fs.readFileSync(imagePath);
   await sock.sendMessage(from, { image: imageBuffer, caption: menuText });
-
 }
-
-
-export default async function command_handler(sock, from, m, args, quotedMessage, meta) {
-  try {
-    return await __orig_mostrarMenu(sock, from);
-  } catch (err) {
-    console.error("Error wrapper ejecutando comando menu.js:", err);
-    throw err;
-  }
-}
-

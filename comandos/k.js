@@ -1,37 +1,36 @@
-// comandos/k.js
-async function __orig_kick(sock, from, m, args) {
-
-  const chat = await sock.groupMetadata(from).catch(() => null);
-  if (!chat) return sock.sendMessage(from, { text: "⚠️ Este comando solo funciona en grupos." });
-
-  const sender = m.key.participant || m.key.remoteJid;
-  const botNumber = sock.user.id.split(":")[0] + "@s.whatsapp.net";
-
-  const botIsAdmin = chat.participants.some(p => p.id === botNumber && (p.admin === "admin" || p.admin === "superadmin"));
-  if (!botIsAdmin) return sock.sendMessage(from, { text: "❌ No puedo expulsar: no soy admin del grupo." });
-
-  const isAdmin = chat.participants.some(p => p.id === sender && (p.admin === "admin" || p.admin === "superadmin"));
-  if (!isAdmin) return sock.sendMessage(from, { text: "❌ Solo admins pueden usar este comando." });
-
-  const mention = m.message?.extendedTextMessage?.contextInfo?.mentionedJid || args[0];
-  if (!mention) return sock.sendMessage(from, { text: "⚠️ Menciona a alguien para expulsar." });
-
+export default async function k(sock, from, m, args) {
   try {
-    await sock.groupParticipantsUpdate(from, [mention], "remove");
-    sock.sendMessage(from, { text: `✅ Usuario <@${mention.split("@")[0]}> expulsado.`, mentions: [mention] });
+    if (!from.endsWith('@g.us')) return await sock.sendMessage(from, { text: '⚠️ Este comando solo funciona en grupos.' });
+    const metadata = await sock.groupMetadata(from);
+    const sender = m.key.participant || m.key.remoteJid;
+    const botId = sock.user.id.split(':')[0] + '@s.whatsapp.net';
+    const botIsAdmin = metadata.participants.some(p => p.id === botId && (p.admin === 'admin' || p.admin === 'superadmin'));
+    if (!botIsAdmin) return await sock.sendMessage(from, { text: '❌ Necesito ser admin para expulsar usuarios.' });
+    const isAdmin = metadata.participants.some(p => p.id === sender && (p.admin === 'admin' || p.admin === 'superadmin'));
+    if (!isAdmin) return await sock.sendMessage(from, { text: '❌ Solo los administradores pueden usar este comando.' });
+
+    // target puede ser m.message.extendedTextMessage.contextInfo.mentionedJid o reply
+    let target = null;
+    const ctx = m.message.extendedTextMessage?.contextInfo;
+    if (ctx?.mentionedJid && ctx.mentionedJid.length) target = ctx.mentionedJid[0];
+    else if (ctx?.participant) target = ctx.participant;
+    else if (args && args.length) {
+      let a = args[0];
+      if (!a.includes('@')) a = a + '@s.whatsapp.net';
+      target = a;
+    }
+
+    if (!target) return await sock.sendMessage(from, { text: '❌ Debes mencionar o responder el mensaje del usuario a expulsar.' });
+
+    // don't allow kicking owner or self
+    if (target === botId) return await sock.sendMessage(from, { text: '❌ No puedo expulsarme a mi mismo.' });
+    if (target === sender) return await sock.sendMessage(from, { text: '⚠️ No puedes expulsarte.' });
+    if (target === (process.env.OWNER_NUMBER || '')) return await sock.sendMessage(from, { text: '❌ No puedes expulsar al owner.' });
+
+    await sock.groupParticipantsUpdate(from, [target], 'remove');
+    await sock.sendMessage(from, { text: '✅ Usuario expulsado.' });
   } catch (err) {
-    sock.sendMessage(from, { text: `❌ Error expulsando: ${err.message}` });
-  }
-
-}
-
-
-export default async function command_handler(sock, from, m, args, quotedMessage, meta) {
-  try {
-    return await __orig_kick(sock, from, m, args);
-  } catch (err) {
-    console.error("Error wrapper ejecutando comando k.js:", err);
-    throw err;
+    console.error('Error en comando .k:', err);
+    await sock.sendMessage(from, { text: '❌ Error intentando expulsar.' });
   }
 }
-

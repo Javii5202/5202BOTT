@@ -34,8 +34,7 @@ function getTargetId(m, args) {
   return null;
 }
 
-async function __orig_pareja(sock, from, m, args) {
-
+export default async function pareja(sock, from, m, args) {
   console.log("pareja", args);
   const target = getTargetId(m, args);
   if (!target) return await sock.sendMessage(from, { text: "❌ Debes mencionar a alguien para proponer." });
@@ -58,16 +57,4 @@ async function __orig_pareja(sock, from, m, args) {
     text: `😍 @${target.split("@")[0]} @${sender.split("@")[0]} — @${sender.split("@")[0]} te propone ser su amorcito! Usa .aceptar @${sender.split("@")[0]} o .rechazar @${sender.split("@")[0]} para responder.`,
     mentions: [target, sender]
   });
-
 }
-
-
-export default async function command_handler(sock, from, m, args, quotedMessage, meta) {
-  try {
-    return await __orig_pareja(sock, from, m, args);
-  } catch (err) {
-    console.error("Error wrapper ejecutando comando pareja.js:", err);
-    throw err;
-  }
-}
-
