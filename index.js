@@ -1,3 +1,7 @@
+import { webcrypto } from "crypto";
+if (!globalThis.crypto) {
+  globalThis.crypto = webcrypto;
+}
 import crypto from "crypto";
 import makeWASocket, {
   DisconnectReason,

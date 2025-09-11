@@ -40,13 +40,29 @@ export default async function play(sock, from, m, args) {
     const safeName = title.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 50) + "_" + Date.now();
     const outputPath = path.join(downloadsDir, `${safeName}.mp3`);
 
+    // Función para obtener stream con reintentos
+    const getStream = async (url) => {
+      for (let i = 0; i < 3; i++) {
+        try {
+          return ytdl(url, { filter: "audioonly", quality: "highestaudio" });
+        } catch (e) {
+          console.log(`Retry ${i + 1} para obtener stream: ${e.message}`);
+          await new Promise(r => setTimeout(r, 1000));
+        }
+      }
+      throw new Error("No se pudo obtener el stream de YouTube");
+    };
+
     // Descargar y convertir a MP3
-    await new Promise((resolve, reject) => {
-      ffmpeg(ytdl(url, { filter: "audioonly", quality: "highestaudio" }))
+    await new Promise(async (resolve, reject) => {
+      ffmpeg(await getStream(url))
         .audioBitrate(128)
         .save(outputPath)
         .on("end", resolve)
-        .on("error", reject);
+        .on("error", (err) => {
+          console.error("Error en ffmpeg:", err);
+          reject(err);
+        });
     });
 
     const buffer = fs.readFileSync(outputPath);
