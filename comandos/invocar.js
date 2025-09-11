@@ -1,23 +1,18 @@
-// comandos/invocar.js
-export default async function invocar(sock, from, m, args) {
-  // Obtener metadata del grupo
-  const chat = await sock.groupMetadata(from).catch(()=>null);
-  if (!chat) return await sock.sendMessage(from, { text: "⚠️ Este comando solo funciona en grupos." });
+export default {
+  name: "invocar",
+  description: "Menciona a todos los participantes del grupo",
+  async execute(sock, m, args) {
+    if (!m.key.remoteJid.endsWith("@g.us")) {
+      return sock.sendMessage(m.key.remoteJid, { text: "❌ Este comando solo funciona en grupos." });
+    }
 
-  // Verificar si el sender es admin
-  const sender = m.key.participant || m.key.remoteJid;
-  const isAdmin = chat.participants.some(p => p.id === sender && (p.admin === "admin" || p.admin === "superadmin"));
-  if (!isAdmin) return await sock.sendMessage(from, { text: "❌ Solo administradores pueden usar este comando." });
+    const metadata = await sock.groupMetadata(m.key.remoteJid);
+    const participants = metadata.participants.map(p => p.id);
+    const mensaje = `📢 Invocación realizada por @${m.key.participant.split("@")[0]}`;
 
-  // Texto opcional
-  const text = args.join(" ").trim() || "";
-  
-  // Obtener todos los miembros del grupo
-  const members = chat.participants.map(p => p.id);
-  if (!members.length) return await sock.sendMessage(from, { text: "⚠️ No hay miembros en el grupo para invocar." });
-
-  // Crear mensaje con menciones
-  const msg = `${text ? text + ": " : ""}${members.map(m => "@" + m.split("@")[0]).join(" ")}`;
-
-  await sock.sendMessage(from, { text: msg, mentions: members });
-}
+    await sock.sendMessage(m.key.remoteJid, {
+      text: mensaje,
+      mentions: participants
+    });
+  }
+};
