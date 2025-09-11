@@ -1,5 +1,6 @@
 // comandos/k.js
-export default async function kick(sock, from, m, args) {
+async function __orig_kick(sock, from, m, args) {
+
   const chat = await sock.groupMetadata(from).catch(() => null);
   if (!chat) return sock.sendMessage(from, { text: "⚠️ Este comando solo funciona en grupos." });
 
@@ -21,4 +22,16 @@ export default async function kick(sock, from, m, args) {
   } catch (err) {
     sock.sendMessage(from, { text: `❌ Error expulsando: ${err.message}` });
   }
+
 }
+
+
+export default async function command_handler(sock, from, m, args, quotedMessage, meta) {
+  try {
+    return await __orig_kick(sock, from, m, args);
+  } catch (err) {
+    console.error("Error wrapper ejecutando comando k.js:", err);
+    throw err;
+  }
+}
+

@@ -1,76 +1,48 @@
+import ytsr from "ytsr";
+import ytdl from "@distube/ytdl-core";
 import fs from "fs";
 import path from "path";
-import ytdl from "ytdl-core";
-import ytSearch from "yt-search";
-import fetch from "node-fetch"; // npm i node-fetch si no lo tenés
-
-const downloadsDir = path.join(process.cwd(), "downloads");
-if (!fs.existsSync(downloadsDir)) fs.mkdirSync(downloadsDir);
 
 export default async function video(sock, from, m, args) {
-  const query = args.join(" ").trim();
-  if (!query) {
-    await sock.sendMessage(from, { text: "📹 Escribí el nombre del video. Ej: `.video nombre`" });
-    return;
-  }
-
   try {
-    // Buscar video
-    const search = await ytSearch(query);
-    const vid = search.videos[0];
-    if (!vid) {
-      await sock.sendMessage(from, { text: "❌ No encontré nada con ese nombre." });
+    if (!args || args.length === 0) {
+      await sock.sendMessage(from, { text: "❌ Debes escribir el nombre de un video." }, { quoted: m });
       return;
     }
 
-    const title = vid.title;
-    const url = vid.url;
-
-    // Validar si el video sigue disponible
-    const isValid = await ytdl.validateURL(url);
-    if (!isValid) {
-      await sock.sendMessage(from, { text: "❌ El video ya no está disponible." });
+    const query = args.join(" ");
+    const searchResults = await ytsr(query, { limit: 1 });
+    if (!searchResults.items || searchResults.items.length === 0) {
+      await sock.sendMessage(from, { text: "❌ Video no encontrado." }, { quoted: m });
       return;
     }
 
-    const safeName = title.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 50) + "_" + Date.now();
-    const outputPath = path.join(downloadsDir, `${safeName}.mp4`);
+    const video = searchResults.items[0];
+    const url = video.url;
 
-    // Descargar video
+    const filePath = path.join("/tmp", `video_${Date.now()}.mp4`);
+    const stream = ytdl(url, {
+      filter: "videoandaudio",
+      quality: "highest",
+      highWaterMark: 1 << 25,
+    });
+
     await new Promise((resolve, reject) => {
-      ytdl(url, { quality: "highest" })
-        .pipe(fs.createWriteStream(outputPath))
-        .on("finish", resolve)
-        .on("error", reject);
+      const writeStream = fs.createWriteStream(filePath);
+      stream.pipe(writeStream);
+      writeStream.on("finish", resolve);
+      writeStream.on("error", reject);
     });
 
-    const buffer = fs.readFileSync(outputPath);
-
-    // Enviar miniatura con detalles
-    try {
-      const resp = await fetch(vid.thumbnail);
-      const thumbBuffer = Buffer.from(await resp.arrayBuffer());
-      await sock.sendMessage(from, {
-        image: thumbBuffer,
-        caption: `🎬 *${title}*\n⏱ ${vid.timestamp}\n👀 ${vid.views} vistas\n📅 ${vid.ago}\n🔗 ${url}`,
-      });
-    } catch {
-      await sock.sendMessage(from, { text: `🎬 *${title}*\n🔗 ${url}` });
-    }
-
-    // Enviar video
     await sock.sendMessage(from, {
-      video: buffer,
-      mimetype: "video/mp4",
-      fileName: `${title}.mp4`,
-    });
+      video: { url: filePath },
+      caption: `📹 ${video.title}`,
+    }, { quoted: m });
 
-    try { fs.unlinkSync(outputPath); } catch {}
-    console.log("✅ Video enviado:", title);
+    fs.unlinkSync(filePath);
 
   } catch (err) {
     console.error("❌ Error en .video:", err);
-    await sock.sendMessage(from, { text: "❌ Error al descargar el video." });
+    await sock.sendMessage(from, { text: "❌ Error descargando el video." }, { quoted: m });
   }
 }
-

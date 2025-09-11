@@ -19,7 +19,8 @@ function normalizeJid(jid) {
   return jid;
 }
 
-export default async function parejastats(sock, from, m, args) {
+async function __orig_parejastats(sock, from, m, args) {
+
   const mentions = m?.message?.extendedTextMessage?.contextInfo?.mentionedJid || [];
   const userId = normalizeJid(mentions[0] || m.key.participant || m.key.remoteJid);
 
@@ -45,4 +46,16 @@ export default async function parejastats(sock, from, m, args) {
     text: `💞 @${userId.split("@")[0]} y @${parejaId.split("@")[0]} llevan:\n${weeks} semanas, ${days} días, ${hours} horas, ${minutes} minutos y ${seconds} segundos juntos.`,
     mentions: [userId, parejaId]
   });
+
 }
+
+
+export default async function command_handler(sock, from, m, args, quotedMessage, meta) {
+  try {
+    return await __orig_parejastats(sock, from, m, args);
+  } catch (err) {
+    console.error("Error wrapper ejecutando comando parejastats.js:", err);
+    throw err;
+  }
+}
+

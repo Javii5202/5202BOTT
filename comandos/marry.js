@@ -20,7 +20,8 @@ function normalizeJid(jid) {
   return jid;
 }
 
-export default async function marry(sock, from, m, args) {
+async function __orig_marry(sock, from, m, args) {
+
   console.log("marry", args);
   const who = normalizeJid(m.key.participant || m.key.remoteJid);
   const data = load();
@@ -45,4 +46,16 @@ export default async function marry(sock, from, m, args) {
   ];
   const text = texts[Math.floor(Math.random() * texts.length)];
   await sock.sendMessage(from, { text, mentions: [who, parejaId] });
+
 }
+
+
+export default async function command_handler(sock, from, m, args, quotedMessage, meta) {
+  try {
+    return await __orig_marry(sock, from, m, args);
+  } catch (err) {
+    console.error("Error wrapper ejecutando comando marry.js:", err);
+    throw err;
+  }
+}
+

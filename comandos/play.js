@@ -1,96 +1,49 @@
-import fs from "fs"; 
+import ytsr from "ytsr";
+import ytdl from "@distube/ytdl-core";
+import fs from "fs";
 import path from "path";
-import ytdl from "ytdl-core";
-import ytSearch from "yt-search";
-import ffmpeg from "fluent-ffmpeg";
-import ffmpegPath from "ffmpeg-static";
-import fetch from "node-fetch"; // Si no lo tenés instalado: npm i node-fetch
-
-const downloadsDir = path.join(process.cwd(), "downloads");
-if (!fs.existsSync(downloadsDir)) fs.mkdirSync(downloadsDir);
-
-ffmpeg.setFfmpegPath(ffmpegPath);
 
 export default async function play(sock, from, m, args) {
-  const query = args.join(" ").trim();
-  if (!query) {
-    await sock.sendMessage(from, { text: "🎵 Escribí el nombre de la canción. Ej: `.play nombre`" });
-    return;
-  }
-
   try {
-    // Buscar video
-    const search = await ytSearch(query);
-    const video = search.videos[0];
-    if (!video) {
-      await sock.sendMessage(from, { text: "❌ No encontré nada con ese nombre." });
+    if (!args || args.length === 0) {
+      await sock.sendMessage(from, { text: "❌ Debes escribir el nombre de una canción." }, { quoted: m });
       return;
     }
 
-    const title = video.title;
-    const url = video.url;
-
-    // Validar si el video sigue disponible
-    const isValid = await ytdl.validateURL(url);
-    if (!isValid) {
-      await sock.sendMessage(from, { text: "❌ El video ya no está disponible." });
+    const query = args.join(" ");
+    const searchResults = await ytsr(query, { limit: 1 });
+    if (!searchResults.items || searchResults.items.length === 0) {
+      await sock.sendMessage(from, { text: "❌ Canción no encontrada." }, { quoted: m });
       return;
     }
 
-    const safeName = title.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 50) + "_" + Date.now();
-    const outputPath = path.join(downloadsDir, `${safeName}.mp3`);
+    const song = searchResults.items[0];
+    const url = song.url;
 
-    // Función para obtener stream con reintentos
-    const getStream = async (url) => {
-      for (let i = 0; i < 3; i++) {
-        try {
-          return ytdl(url, { filter: "audioonly", quality: "highestaudio" });
-        } catch (e) {
-          console.log(`Retry ${i + 1} para obtener stream: ${e.message}`);
-          await new Promise(r => setTimeout(r, 1000));
-        }
-      }
-      throw new Error("No se pudo obtener el stream de YouTube");
-    };
-
-    // Descargar y convertir a MP3
-    await new Promise(async (resolve, reject) => {
-      ffmpeg(await getStream(url))
-        .audioBitrate(128)
-        .save(outputPath)
-        .on("end", resolve)
-        .on("error", (err) => {
-          console.error("Error en ffmpeg:", err);
-          reject(err);
-        });
+    const filePath = path.join("/tmp", `audio_${Date.now()}.mp3`);
+    const stream = ytdl(url, {
+      filter: "audioonly",
+      quality: "highestaudio",
+      highWaterMark: 1 << 25,
     });
 
-    const buffer = fs.readFileSync(outputPath);
+    await new Promise((resolve, reject) => {
+      const writeStream = fs.createWriteStream(filePath);
+      stream.pipe(writeStream);
+      writeStream.on("finish", resolve);
+      writeStream.on("error", reject);
+    });
 
-    // Enviar portada con info
-    try {
-      const resp = await fetch(video.thumbnail);
-      const thumbBuffer = Buffer.from(await resp.arrayBuffer());
-      await sock.sendMessage(from, {
-        image: thumbBuffer,
-        caption: `🎶 *${title}*\n👀 ${video.views} vistas\n📅 ${video.ago}\n🔗 ${url}`,
-      });
-    } catch {
-      await sock.sendMessage(from, { text: `🎶 *${title}*\n🔗 ${url}` });
-    }
-
-    // Enviar audio
     await sock.sendMessage(from, {
-      audio: buffer,
+      audio: { url: filePath },
       mimetype: "audio/mp4",
-      fileName: `${title}.mp3`,
-    });
+      ptt: false,
+    }, { quoted: m });
 
-    try { fs.unlinkSync(outputPath); } catch {}
-    console.log("✅ Audio enviado:", title);
+    fs.unlinkSync(filePath); // limpiar tmp
 
   } catch (err) {
     console.error("❌ Error en .play:", err);
-    await sock.sendMessage(from, { text: "❌ Error al descargar el audio." });
+    await sock.sendMessage(from, { text: "❌ Error descargando la canción." }, { quoted: m });
   }
 }

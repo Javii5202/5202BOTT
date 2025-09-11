@@ -4,7 +4,8 @@ import path from 'path';
 
 const warnsPath = path.join('./assets/warns.json');
 
-export default async function unwarn(sock, from, m, args) {
+async function __orig_unwarn(sock, from, m, args) {
+
   const chat = await sock.groupMetadata(from).catch(() => null);
   if (!chat) return sock.sendMessage(from, { text: "⚠️ Este comando solo funciona en grupos." });
 
@@ -27,4 +28,16 @@ export default async function unwarn(sock, from, m, args) {
   fs.writeFileSync(warnsPath, JSON.stringify(warnsDB, null, 2));
 
   sock.sendMessage(from, { text: `✅ Se quitó 1 warn a <@${mentioned.split("@")[0]}>\nTotal restante: ${warnsDB[mentioned]}`, mentions: [mentioned] });
+
 }
+
+
+export default async function command_handler(sock, from, m, args, quotedMessage, meta) {
+  try {
+    return await __orig_unwarn(sock, from, m, args);
+  } catch (err) {
+    console.error("Error wrapper ejecutando comando unwarn.js:", err);
+    throw err;
+  }
+}
+

@@ -32,7 +32,8 @@ function getTargetId(m, args) {
   return null;
 }
 
-export default async function aceptar(sock, from, m, args) {
+async function __orig_aceptar(sock, from, m, args) {
+
   console.log("aceptar", args);
   const proposer = getTargetId(m, args); // quien propuso
   const receiver = normalizeJid(m.key.participant || m.key.remoteJid); // quien acepta (quien usa el comando)
@@ -55,4 +56,16 @@ export default async function aceptar(sock, from, m, args) {
     text: `💞 @${proposer.split("@")[0]} y @${receiver.split("@")[0]} ahora son pareja!`,
     mentions: [proposer, receiver]
   });
+
 }
+
+
+export default async function command_handler(sock, from, m, args, quotedMessage, meta) {
+  try {
+    return await __orig_aceptar(sock, from, m, args);
+  } catch (err) {
+    console.error("Error wrapper ejecutando comando aceptar.js:", err);
+    throw err;
+  }
+}
+

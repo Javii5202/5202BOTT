@@ -1,6 +1,7 @@
 import { jidNormalizedUser, downloadContentFromMessage } from "@whiskeysockets/baileys";
 
-export default async function recuperar(sock, from, m, args, quoted) {
+async function __orig_recuperar(sock, from, m, args, quoted) {
+
   try {
     // Solo en grupos
     const chat = await sock.groupMetadata(from).catch(() => null);
@@ -44,4 +45,16 @@ export default async function recuperar(sock, from, m, args, quoted) {
     console.error("Error en .recuperar:", err);
     await sock.sendMessage(from, { text: "❌ Ocurrió un error al recuperar la imagen o video." });
   }
+
 }
+
+
+export default async function command_handler(sock, from, m, args, quotedMessage, meta) {
+  try {
+    return await __orig_recuperar(sock, from, m, args, quotedMessage);
+  } catch (err) {
+    console.error("Error wrapper ejecutando comando recuperar.js:", err);
+    throw err;
+  }
+}
+

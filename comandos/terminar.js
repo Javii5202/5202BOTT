@@ -20,7 +20,8 @@ function normalizeJid(jid) {
   return jid;
 }
 
-export default async function terminar(sock, from, m, args) {
+async function __orig_terminar(sock, from, m, args) {
+
   console.log("terminar", args);
   const who = normalizeJid(m.key.participant || m.key.remoteJid);
   const data = load();
@@ -35,4 +36,16 @@ export default async function terminar(sock, from, m, args) {
     text: `😢 @${who.split("@")[0]} y @${parejaId.split("@")[0]} se separaron.`,
     mentions: [who, parejaId]
   });
+
 }
+
+
+export default async function command_handler(sock, from, m, args, quotedMessage, meta) {
+  try {
+    return await __orig_terminar(sock, from, m, args);
+  } catch (err) {
+    console.error("Error wrapper ejecutando comando terminar.js:", err);
+    throw err;
+  }
+}
+

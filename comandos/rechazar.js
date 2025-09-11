@@ -32,7 +32,8 @@ function getTargetId(m, args) {
   return null;
 }
 
-export default async function rechazar(sock, from, m, args) {
+async function __orig_rechazar(sock, from, m, args) {
+
   console.log("rechazar", args);
   const proposer = getTargetId(m, args);
   const receiver = normalizeJid(m.key.participant || m.key.remoteJid);
@@ -51,4 +52,16 @@ export default async function rechazar(sock, from, m, args) {
     text: `😢 @${receiver.split("@")[0]} rechazó la propuesta de @${proposer.split("@")[0]}.`,
     mentions: [receiver, proposer]
   });
+
 }
+
+
+export default async function command_handler(sock, from, m, args, quotedMessage, meta) {
+  try {
+    return await __orig_rechazar(sock, from, m, args);
+  } catch (err) {
+    console.error("Error wrapper ejecutando comando rechazar.js:", err);
+    throw err;
+  }
+}
+

@@ -9,7 +9,8 @@ import {
   getMentionedOrQuoted
 } from "./economy-lib.js";
 
-export default async function steal(sock, from, m, args) {
+async function __orig_steal(sock, from, m, args) {
+
   try {
     const sender = getSender(m);
     if (!sender) return;
@@ -58,4 +59,16 @@ export default async function steal(sock, from, m, args) {
     console.error("Error en steal:", e);
     await sock.sendMessage(from, { text: "❌ Ocurrió un error en el comando .steal" });
   }
+
 }
+
+
+export default async function command_handler(sock, from, m, args, quotedMessage, meta) {
+  try {
+    return await __orig_steal(sock, from, m, args);
+  } catch (err) {
+    console.error("Error wrapper ejecutando comando steal.js:", err);
+    throw err;
+  }
+}
+
